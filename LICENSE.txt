@@ -1,0 +1,2 @@
+Data used to train is a free data set provided by ETH Zurich:
+https://www.kaggle.com/datasets/aryashah2k/2d-ultrasound-sequences-of-the-liver
