@@ -1,0 +1,34 @@
+Data Info
+
+
+Ultrasound device: Antares, Siemens Medical Solutions, Mountain View, CA, USA
+Ultrasound transducer: CH4-1
+Place of acquisition: Radiology Department of Geneva University Hospital, Switzerland
+
+
+
+volunteer02.avi - volunteer 09.avi: 8 bits grayscale codec
+volunteer01: sequence of images grabbed from the ultraosund video output
+
+
+
+		Spatial resolution	Temporal resolution 	Center frequency
+		    [mm/pixel]		      [fps]		     [MHz]
+--------------------------------------------------------------------------------
+volunteer01		0.71			25		     2.22
+--------------------------------------------------------------------------------
+volunteer02		0.40			16		     2.00
+--------------------------------------------------------------------------------
+volunteer03		0.36			17		     1.82
+--------------------------------------------------------------------------------
+volunteer04		0.42			15		     2.22
+--------------------------------------------------------------------------------
+volunteer05		0.40			15		     2.22
+--------------------------------------------------------------------------------
+volunteer06		0.37			17		     1.82
+--------------------------------------------------------------------------------
+volunteer07		0.28			14		     2.22
+--------------------------------------------------------------------------------
+volunteer08		0.36			17		     1.82
+--------------------------------------------------------------------------------
+volunteer09 		0.40			16		     1.82
