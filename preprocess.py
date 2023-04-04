@@ -3,6 +3,7 @@ import numpy as np
 import os
 import pathlib
 import sys
+import cv2
 
 sys.stdout.flush()
 from src.llff_preprocessing import gen_poses
@@ -69,6 +70,7 @@ def video_preprocessing(args):
     # ffmpeg_output = check_output([ffmpeg_path] + command.split(" "), stderr=STDOUT)
 
 
+
 def create_folder(folder):
     pathlib.Path(folder).mkdir(parents=True, exist_ok=True)
 
@@ -90,7 +92,76 @@ def preprocess(args):
         video_preprocessing(args)
         args.input = args.output
         # get camera poses by running colmap but will probably change to soemthign that can ahndle ultrasound images
-        gen_poses(args.input, args.colmap_matching)
+        #gen_poses(args.input, args.colmap_matching)
+        crop(args)
+        applyFilters(args)
+
+def crop(args):
+    # Define the path to the directory containing the ultrasound images
+    img_dir = os.path.join(args.output, "images")
+    images_folder = os.path.join(args.output, "crop_images/")
+    create_folder(images_folder)
+
+    # Define the coordinates of the ROI
+    x = 100 # x-coordinate of the top-left corner of the ROI
+    y = 80 # y-coordinate of the top-left corner of the ROI
+    w = 310 # width of the ROI
+    h = 300 # height of the ROI
+    # Create a directory to store the cropped ROIs
+    roi_dir = os.path.join(args.output, "crop_images")
+    # Loop over all the ultrasound images
+    for filename in os.listdir(img_dir):
+            # Load the ultrasound image
+        img = cv2.imread(os.path.join(img_dir, filename), cv2.IMREAD_GRAYSCALE)
+
+        # Crop the ROI from the denoised image
+        roi = img[y:y+h, x:x+w]
+
+        # Save the cropped ROI to a file
+        roi_filename = os.path.splitext(filename)[0] + "_crop.jpg"
+        roi_path = os.path.join(roi_dir, roi_filename)
+        cv2.imwrite(roi_path, roi)
+
+def applyFilters(args):
+    # Create folders
+    img_dir = os.path.join(args.output, "crop_images")
+    images_folder = os.path.join(args.output, "filtered_images/")
+    create_folder(images_folder)
+    filtered_dir = os.path.join(args.output, "filtered_images")
+
+    def enhance_contrast(img):
+        # Check if the input image is grayscale
+        if len(img.shape) == 2:
+            # If the image is grayscale, apply histogram equalization directly
+            eq = cv2.equalizeHist(img)
+        else:
+            # If the image is color, convert it to grayscale and then apply histogram equalization
+            gray = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
+            eq = cv2.equalizeHist(gray)
+
+        # Convert the equalized image back to color
+        eq_color = cv2.cvtColor(eq, cv2.COLOR_GRAY2BGR)
+
+        return eq_color
+    
+    for filename in os.listdir(img_dir):
+        img = cv2.imread(os.path.join(img_dir, filename), cv2.IMREAD_GRAYSCALE)
+        # Calculate the local mean and variance of the image for denoising
+        mean, var = cv2.meanStdDev(img)
+        mean = mean[0][0]
+        var = var[0][0]
+        # Calculate the optimal denoising parameters based an mean and variance
+        h = 3 * var
+        searchWindowSize = int(max(5, 2 * np.sqrt(var)))
+        templateWindowSize = int(max(3, np.sqrt(var)))
+        img = cv2.fastNlMeansDenoising(img, h, searchWindowSize, templateWindowSize)
+        #img = enhance_contrast(denoised)
+        img = cv2.normalize(img, None, 0, 255, cv2.NORM_MINMAX, dtype=cv2.CV_32F)
+        # Save the cropped ROI to a file
+        filtered_filename = os.path.splitext(filename)[0] + "_filterd.jpg"
+        filtered_path = os.path.join(filtered_dir, filtered_filename)
+        cv2.imwrite(filtered_path, img)
+    
 
 
 if __name__ == "__main__":
