@@ -4,6 +4,9 @@ import os
 import pathlib
 import sys
 import cv2
+from tensorflow.keras.models import load_model
+from scipy.spatial.transform import Rotation
+import pandas as pd
 
 sys.stdout.flush()
 from src.llff_preprocessing import gen_poses
@@ -92,9 +95,13 @@ def preprocess(args):
         video_preprocessing(args)
         args.input = args.output
         # get camera poses by running colmap but will probably change to soemthign that can ahndle ultrasound images
-        #gen_poses(args.input, args.colmap_matching)
         crop(args)
+        print("cropped images")
         applyFilters(args)
+        print("applied filters")
+        args.input = os.path.join(args.output)
+        genPoses(args)
+        print("estimated poses")
 
 def crop(args):
     # Define the path to the directory containing the ultrasound images
@@ -116,11 +123,44 @@ def crop(args):
 
         # Crop the ROI from the denoised image
         roi = img[y:y+h, x:x+w]
-
         # Save the cropped ROI to a file
         roi_filename = os.path.splitext(filename)[0] + "_crop.jpg"
         roi_path = os.path.join(roi_dir, roi_filename)
         cv2.imwrite(roi_path, roi)
+
+def genPoses(args):
+    #load model
+    model = load_model("models/ultrasound_pose_estimator.h5")
+    filterd_image_folder = os.path.join(args.output, "filtered_images")
+    image_files = sorted(os.listdir(filterd_image_folder))
+    image_size = (128, 128)  # Resize the images to a smaller size
+    images = []
+    for img_path in image_files:
+        img = cv2.imread(os.path.join(filterd_image_folder, img_path))
+        img_resized = cv2.resize(img, image_size)
+        images.append(img_resized) 
+    images = np.array(images)
+    #predict position and orientation of probe for each frame
+    predictions = model.predict(images)
+
+    positions = predictions[:, :3]        # Shape: (N, 3)
+    quaternions = predictions[:, 3:]      # Shape: (N, 4)
+
+    rotations = Rotation.from_quat(quaternions)
+    rotation_matrices = rotations.as_matrix()
+
+    N = predictions.shape[0]
+    pose_matrices = np.zeros((N, 4, 4))
+
+    pose_matrices[:, :3, :3] = rotation_matrices
+    pose_matrices[:, :3, 3] = positions 
+
+    pose_matrices[:, 3, 3] = 1
+
+    pose_matrices_flat = pose_matrices.reshape(N, -1)
+    pose_matrices_df = pd.DataFrame(pose_matrices_flat)
+    pose_matrices_df.to_csv(os.path.join(args.output, "pose_matrices.csv"), index=False)
+    np.save(os.path.join(args.output, "pose_matrices.npy"), pose_matrices)
 
 def applyFilters(args):
     # Create folders
@@ -128,7 +168,6 @@ def applyFilters(args):
     images_folder = os.path.join(args.output, "filtered_images/")
     create_folder(images_folder)
     filtered_dir = os.path.join(args.output, "filtered_images")
-
     def enhance_contrast(img):
         # Check if the input image is grayscale
         if len(img.shape) == 2:
@@ -161,7 +200,6 @@ def applyFilters(args):
         filtered_filename = os.path.splitext(filename)[0] + "_filterd.jpg"
         filtered_path = os.path.join(filtered_dir, filtered_filename)
         cv2.imwrite(filtered_path, img)
-    
 
 
 if __name__ == "__main__":
