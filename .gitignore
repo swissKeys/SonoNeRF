@@ -127,3 +127,7 @@ dmypy.json
 
 # Pyre type checker
 .pyre/
+
+# Data
+data/rawdata/volunteer01
+pretrained_networks
