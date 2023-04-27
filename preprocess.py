@@ -9,6 +9,7 @@ from tensorflow.keras.models import load_model
 from scipy.spatial.transform import Rotation
 import pandas as pd
 from models.freeUSrecon import run_pose_estimator
+from models.depth_bounds_estimation import depth_bounds_estimation
 
 sys.stdout.flush()
 from src.llff_preprocessing import gen_poses
@@ -101,24 +102,10 @@ def preprocess(args):
                 applyFilters(args)
                 print("applied filters") """
         folder_path = os.path.join(args.output, 'filtered_images')
-        estimated_poses = run_pose_estimator(folder_path)
+        run_pose_estimator(folder_path)
         print("estimated poses")
-        estimated_poses_flattened = []
-
-        for mat in estimated_poses:
-            flattened_mat = mat.flatten()
-            estimated_poses_flattened.append(flattened_mat)
-
-        estimated_poses_flattened = np.array(estimated_poses_flattened)
-
-        output = os.path.join(args.output, 'estimated_poses_flattened.npy')
-        np.save(output, estimated_poses_flattened)
-        output = os.path.join(args.output, 'estimated_poses_flattened.csv')
-        with open(output, 'w', newline='') as csvfile:
-            csv_writer = csv.writer(csvfile, delimiter=',')
-            
-            for row in estimated_poses_flattened:
-                csv_writer.writerow(row)
+        depths = depth_bounds_estimation(folder_path)
+        print("estimated depth", depths)
 
 def crop(args):
     # Define the path to the directory containing the ultrasound images

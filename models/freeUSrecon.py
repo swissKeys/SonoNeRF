@@ -171,7 +171,6 @@ class ApplyModel:
             print(f"  Pose values: {result}")
 
         estimated_matrices = []
-
         def compute_absolute_matrices(estimated_matrices):
             absolute_matrices = [np.eye(4)]  # Initialize with the identity matrix for the first frame
 
@@ -179,7 +178,9 @@ class ApplyModel:
                 M_abs = np.matmul(absolute_matrices[-1], M_est)
                 absolute_matrices.append(M_abs)
 
-            return absolute_matrices
+            # Convert 4x4 matrices to flattened 3x4 matrices
+            flattened_matrices = [M[:3].reshape(-1) for M in absolute_matrices]
+            return flattened_matrices
 
 
         def create_rotation_matrix(ax, ay, az):
@@ -269,7 +270,7 @@ def run_pose_estimator(folder_path, model_string='mc72', model_folder='pretraine
     # Apply the model to the new dataset
     apply_model = ApplyModel(model_ft, images, cam_cali_mat, device, frames_num, neighbour_slice)
     estimated_poses = apply_model.result_params
-
+    print("shape estimated poses: ", estimated_poses)
     estimated_poses_flattened = []
 
     for mat in estimated_poses:
