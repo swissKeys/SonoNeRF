@@ -1,5 +1,8 @@
-Data used to train is a free data set provided by ETH Zurich:
+Data used to train is a free dataset provided by ETH Zurich:
 https://www.kaggle.com/datasets/aryashah2k/2d-ultrasound-sequences-of-the-liver
 
-preprocessing pipeline based on existing work:
+The preprocessing pipeline is based on existing work:
 https://github.com/facebookresearch/nonrigid_nerf
+
+The pose estimation model is adapted from this work:
+https://github.com/DIAL-RPI/FreehandUSRecon/tree/master/data/Demo

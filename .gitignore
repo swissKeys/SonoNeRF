@@ -130,4 +130,5 @@ dmypy.json
 
 # Data
 data/rawdata/volunteer01
-pretrained_networks
+data/preprocessed_data
+pretrained_networks/

@@ -77,7 +77,6 @@ def video_preprocessing(args):
 def create_folder(folder):
     pathlib.Path(folder).mkdir(parents=True, exist_ok=True)
 
-
 def preprocess(args):
 
     # output folder
@@ -100,7 +99,7 @@ def preprocess(args):
         applyFilters(args)
         print("applied filters")
         args.input = os.path.join(args.output)
-        genPoses(args)
+        #genPoses(args)
         print("estimated poses")
 
 def crop(args):
