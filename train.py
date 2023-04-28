@@ -5,7 +5,7 @@ import sys
 import shutil
 import json
 import time
-import random
+import cv2
 
 import numpy as np
 import imageio
@@ -19,7 +19,7 @@ from run_nerf_helpers import *
 from load_llff import load_llff_data
 
 
-device = torch.device("cpu")
+device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 DEBUG = True  # gets overwritten by args.debug
 
 
@@ -1297,9 +1297,11 @@ def get_full_resolution_intrinsics(args, dataset_extras):
             imgnames = [f for f in sorted(os.listdir(imgdir)) if f.endswith('JPG') or f.endswith('jpg') or f.endswith('png')]
             imgfiles = [os.path.join(imgdir, f) for f in imgnames]
             def imread(f):
-                return imageio.imread(f, ignoregamma=True) if f[-4:] == ".png" else imageio.imread(f)
-            height, width, _ = imread(imgfiles[0]).shape
+                return cv2.imread(f)
+            img = imread(imgfiles[0])
+            height, width, _ = img.shape
             return imgfiles, height, width
+
 
         image_folder = "images"
         imgfiles, height, width = _get_info(image_folder)
@@ -1958,48 +1960,6 @@ def create_folder(folder):
     pathlib.Path(folder).mkdir(parents=True, exist_ok=True)
 
 
-def backup(results_folder):
-    print("backing up... ", flush=True, end="")
-    special_files_to_copy = ["configs/default.txt"]  # ["specs.json"]
-    filetypes_to_copy = [".py"]
-    subfolders_to_copy = ["", "llff_preprocessing/"]
-
-    this_file = os.path.realpath(__file__)
-    this_folder = os.path.dirname(this_file) + "/"
-    backup_folder = os.path.join(results_folder, "backup/")
-    create_folder(backup_folder)
-    # special files
-    [
-        create_folder(os.path.join(backup_folder, os.path.split(file)[0]))
-        for file in special_files_to_copy
-    ]
-    [
-        shutil.copyfile(
-            os.path.join(this_folder, file), os.path.join(backup_folder, file)
-        )
-        for file in special_files_to_copy
-    ]
-    # folders
-    for subfolder in subfolders_to_copy:
-        create_folder(os.path.join(backup_folder, subfolder))
-        files = os.listdir(os.path.join(this_folder, subfolder))
-        files = [
-            file
-            for file in files
-            if os.path.isfile(os.path.join(this_folder, subfolder, file))
-            and file[file.rfind(".") :] in filetypes_to_copy
-        ]
-        [
-            shutil.copyfile(
-                os.path.join(this_folder, subfolder, file),
-                os.path.join(backup_folder, subfolder, file),
-            )
-            for file in files
-        ]
-
-    print("done.", flush=True)
-
-
 if __name__ == "__main__":
     parser = config_parser()
     args = parser.parse_args()
@@ -2010,6 +1970,5 @@ if __name__ == "__main__":
     create_folder(results_folder)
     if args.no_reload:
         shutil.rmtree(results_folder)
-    backup(results_folder)
 
     main_function(args)
