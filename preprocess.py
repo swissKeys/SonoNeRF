@@ -5,14 +5,11 @@ import pathlib
 import sys
 import csv
 import cv2
-from tensorflow.keras.models import load_model
-from scipy.spatial.transform import Rotation
 import pandas as pd
 from models.freeUSrecon import run_pose_estimator
 from models.depth_bounds_estimation import depth_bounds_estimation
 
 sys.stdout.flush()
-from src.llff_preprocessing import gen_poses
 
 
 def video_preprocessing(args):
@@ -94,19 +91,24 @@ def preprocess(args):
 
     # video extraction
     if os.path.isfile(args.input):
-        """         video_preprocessing(args)
-                args.input = args.output
-                # get camera poses by running colmap but will probably change to soemthign that can ahndle ultrasound images
-                crop(args)
-                print("cropped images")
-                applyFilters(args)
-                print("applied filters") """
+        video_preprocessing(args)
+        args.input = args.output
+        crop(args)
+        print("cropped images")
+        applyFilters(args)
+        print("applied filters")
         folder_path = os.path.join(args.output, 'filtered_images')
         run_pose_estimator(folder_path)
         print("estimated poses")
         depths = depth_bounds_estimation(folder_path)
         print("estimated depth", depths)
-
+        pose_bounds = np.load('data/preprocessed_data/estimated_poses_flattened.npy')
+        pose_bounds_with_depth = np.hstack([pose_bounds, depths])
+        np.save('data/preprocessed_data/pose_bounds.npy', pose_bounds_with_depth)
+        with open('data/preprocessed_data/pose_bounds.csv', 'w', newline='') as csvfile:
+            csv_writer = csv.writer(csvfile, delimiter=',')
+            for row in pose_bounds_with_depth:
+                csv_writer.writerow(row)
 def crop(args):
     # Define the path to the directory containing the ultrasound images
     img_dir = os.path.join(args.output, "images")

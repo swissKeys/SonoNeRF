@@ -170,17 +170,16 @@ class ApplyModel:
             print(f"  Data type: {result.dtype}")
             print(f"  Pose values: {result}")
 
-        estimated_matrices = []
         def compute_absolute_matrices(estimated_matrices):
-            absolute_matrices = [np.eye(4)]  # Initialize with the identity matrix for the first frame
+            absolute_matrices = [estimated_matrices[0]]  # Initialize with the first relative transformation matrix
 
-            for M_est in estimated_matrices:
+            for M_est in estimated_matrices[1:]:  # Process the remaining relative transformation matrices
                 M_abs = np.matmul(absolute_matrices[-1], M_est)
                 absolute_matrices.append(M_abs)
 
-            # Convert 4x4 matrices to flattened 3x4 matrices
-            flattened_matrices = [M[:3].reshape(-1) for M in absolute_matrices]
-            return flattened_matrices
+            # Convert 4x4 matrices to 3x4 matrices
+            matrices_3x4 = [M[:3] for M in absolute_matrices]
+            return matrices_3x4
 
 
         def create_rotation_matrix(ax, ay, az):
@@ -203,7 +202,7 @@ class ApplyModel:
             # Combine the rotation matrices
             R_est = np.matmul(Rz, np.matmul(Ry, Rx))
             return R_est
-
+        estimated_matrices = []
         for theta in results:
             tx, ty, tz, ax, ay, az = theta[0]  # Use theta[0] instead of theta to extract values
             R_est = create_rotation_matrix(ax, ay, az)  # You'll need to implement this function
@@ -212,9 +211,33 @@ class ApplyModel:
             M_est = np.vstack((M_est, np.array([0, 0, 0, 1])))
             estimated_matrices.append(M_est)
 
+        print(f"Number of estimated_matricess: {len(estimated_matrices)}")
         absolute_matrices = compute_absolute_matrices(estimated_matrices)
-        
+        print(f"Number of absolute_matrices: {len(absolute_matrices)}")
         self.result_params = absolute_matrices
+
+def create_3x5_matrices(estimated_poses, cam_cali_mat):
+    matrices_3x5 = []
+
+    for pose in estimated_poses:
+        print("pose shape", pose.shape)
+        # Get the rotation matrix and translation vector from the estimated pose
+        R = pose[:, :3]
+        t = pose[:, 3]
+
+        # Compute the projection matrix
+        P = np.matmul(cam_cali_mat, np.hstack((R, t.reshape(3, 1))))
+
+        # Compute the depth bounds
+        z_min = 0.5  # Define the minimum depth
+        z_max = 1.5  # Define the maximum depth
+
+        # Create the 3x5 matrix
+        matrix_3x5 = np.hstack((P, np.array([[z_min], [z_min], [z_max]])))
+
+        matrices_3x5.append(matrix_3x5)
+
+    return matrices_3x5
 
 # Load the pretrained model
 
@@ -238,10 +261,10 @@ def run_pose_estimator(folder_path, model_string='mc72', model_folder='pretraine
 
     # Parameters from the ultrasound system
     resolution = 0.71  # Spatial resolution in mm/pixel
-    center_frequency = 2.22  # Center frequency in MHz
+    center_frequency = 2.22  # Center frequency in MHz (maybe useul for fien tuning)
     # Image dimensions in pixels
-    image_width_pixels = 640
-    image_height_pixels = 480
+    image_width_pixels = images.shape[2]
+    image_height_pixels = images.shape[3]
 
     # Physical dimensions of the image in millimeters
     image_width_mm = image_width_pixels * resolution
@@ -265,24 +288,22 @@ def run_pose_estimator(folder_path, model_string='mc72', model_folder='pretraine
 
     device = torch.device("cpu")
     frames_num = len(images)
+    print("images size" ,images.shape)
     neighbour_slice = 4 # The number of neighboring slices
 
     # Apply the model to the new dataset
     apply_model = ApplyModel(model_ft, images, cam_cali_mat, device, frames_num, neighbour_slice)
     estimated_poses = apply_model.result_params
-    print("shape estimated poses: ", estimated_poses)
+
+    # Create the 3x5 matrices using the estimated poses and the camera calibration matrix
+    matrices_3x5 = create_3x5_matrices(estimated_poses, cam_cali_mat)
+
     estimated_poses_flattened = []
 
-    for mat in estimated_poses:
+    for mat in matrices_3x5:
         flattened_mat = mat.flatten()
         estimated_poses_flattened.append(flattened_mat)
 
     estimated_poses_flattened = np.array(estimated_poses_flattened)
-
-    np.save('estimated_poses_flattened.npy', estimated_poses_flattened)
-
-    with open('output.csv', 'w', newline='') as csvfile:
-        csv_writer = csv.writer(csvfile, delimiter=',')
-        
-        for row in estimated_poses_flattened:
-            csv_writer.writerow(row)
+    print("final poses shape",estimated_poses_flattened.shape)
+    np.save('data/preprocessed_data/estimated_poses_flattened.npy', estimated_poses_flattened)
