@@ -29,7 +29,7 @@ def video_preprocessing(args):
         "-i "
         + video_path
         + " -f image2 -qscale:v 2 -vf fps="
-        + str(args.fps)
+        + str(args.fps/2) 
         + " "
         + images_folder
         + "image%05d.png"
