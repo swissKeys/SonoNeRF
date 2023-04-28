@@ -3,13 +3,13 @@ import numpy as np
 import os
 import pathlib
 import sys
+import csv
 import cv2
-from tensorflow.keras.models import load_model
-from scipy.spatial.transform import Rotation
 import pandas as pd
+from models.freeUSrecon import run_pose_estimator
+from models.depth_bounds_estimation import depth_bounds_estimation
 
 sys.stdout.flush()
-from src.llff_preprocessing import gen_poses
 
 
 def video_preprocessing(args):
@@ -29,7 +29,7 @@ def video_preprocessing(args):
         "-i "
         + video_path
         + " -f image2 -qscale:v 2 -vf fps="
-        + str(args.fps)
+        + str(args.fps/2) 
         + " "
         + images_folder
         + "image%05d.png"
@@ -77,7 +77,6 @@ def video_preprocessing(args):
 def create_folder(folder):
     pathlib.Path(folder).mkdir(parents=True, exist_ok=True)
 
-
 def preprocess(args):
 
     # output folder
@@ -94,15 +93,22 @@ def preprocess(args):
     if os.path.isfile(args.input):
         video_preprocessing(args)
         args.input = args.output
-        # get camera poses by running colmap but will probably change to soemthign that can ahndle ultrasound images
         crop(args)
         print("cropped images")
         applyFilters(args)
         print("applied filters")
-        args.input = os.path.join(args.output)
-        genPoses(args)
+        folder_path = os.path.join(args.output, 'filtered_images')
+        run_pose_estimator(folder_path)
         print("estimated poses")
-
+        depths = depth_bounds_estimation(folder_path)
+        print("estimated depth", depths)
+        pose_bounds = np.load('data/preprocessed_data/estimated_poses_flattened.npy')
+        pose_bounds_with_depth = np.hstack([pose_bounds, depths])
+        np.save('data/preprocessed_data/pose_bounds.npy', pose_bounds_with_depth)
+        with open('data/preprocessed_data/pose_bounds.csv', 'w', newline='') as csvfile:
+            csv_writer = csv.writer(csvfile, delimiter=',')
+            for row in pose_bounds_with_depth:
+                csv_writer.writerow(row)
 def crop(args):
     # Define the path to the directory containing the ultrasound images
     img_dir = os.path.join(args.output, "images")
@@ -128,39 +134,6 @@ def crop(args):
         roi_path = os.path.join(roi_dir, roi_filename)
         cv2.imwrite(roi_path, roi)
 
-def genPoses(args):
-    #load model
-    model = load_model("models/ultrasound_pose_estimator.h5")
-    filterd_image_folder = os.path.join(args.output, "filtered_images")
-    image_files = sorted(os.listdir(filterd_image_folder))
-    image_size = (128, 128)  # Resize the images to a smaller size
-    images = []
-    for img_path in image_files:
-        img = cv2.imread(os.path.join(filterd_image_folder, img_path))
-        img_resized = cv2.resize(img, image_size)
-        images.append(img_resized) 
-    images = np.array(images)
-    #predict position and orientation of probe for each frame
-    predictions = model.predict(images)
-
-    positions = predictions[:, :3]        # Shape: (N, 3)
-    quaternions = predictions[:, 3:]      # Shape: (N, 4)
-
-    rotations = Rotation.from_quat(quaternions)
-    rotation_matrices = rotations.as_matrix()
-
-    N = predictions.shape[0]
-    pose_matrices = np.zeros((N, 4, 4))
-
-    pose_matrices[:, :3, :3] = rotation_matrices
-    pose_matrices[:, :3, 3] = positions 
-
-    pose_matrices[:, 3, 3] = 1
-
-    pose_matrices_flat = pose_matrices.reshape(N, -1)
-    pose_matrices_df = pd.DataFrame(pose_matrices_flat)
-    pose_matrices_df.to_csv(os.path.join(args.output, "pose_matrices.csv"), index=False)
-    np.save(os.path.join(args.output, "pose_matrices.npy"), pose_matrices)
 
 def applyFilters(args):
     # Create folders
