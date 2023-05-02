@@ -183,6 +183,9 @@ class training_wrapper_class(torch.nn.Module):
         # look up additional information (autodecoder per-image ray bending latent code)
         # need to add this information dynamically here with indexing because otherwise values are not refreshed properly (e.g. if latent codes are concatenated to rays only once at the very start of training)
         additional_pixel_information = {}
+        device = imageid_to_timestepid.device
+        batch_pixel_indices = batch_pixel_indices.to(device)
+        imageid_to_timestepid = imageid_to_timestepid.to(device)
         additional_pixel_information["ray_bending_latents"] = ray_bending_latents_list[
             imageid_to_timestepid[batch_pixel_indices[:, 0]], :
         ]  # shape: samples x latent_size
