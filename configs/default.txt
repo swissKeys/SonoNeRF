@@ -20,7 +20,7 @@ time_conditioned_baseline = False
 
 lrate_decay = 150000
 N_iters = 100000
-i_video = 100000
+i_video = 5000
 i_testset = 100000
 
 N_samples = 64
