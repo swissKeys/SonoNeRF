@@ -1501,14 +1501,7 @@ def main_function(args):
     print("get rays")
     rays = np.stack([get_rays_np(p, intrinsics[dataset_extras["imageid_to_viewid"][imageid]]) for imageid, p in enumerate(poses[:,:3,:4])], 0) # [N, ro+rd, H, W, 3]
     print("done, concats")
-    def convert_grayscale_to_rgb(grayscale_image):
-        return np.stack((grayscale_image,) * 3, axis=-1)
 
-    # Convert all grayscale frames to RGB
-    rgb_frames = [convert_grayscale_to_rgb(gray_frame) for gray_frame in images]
-
-    # Convert the list of RGB frames to a NumPy array
-    images = np.array(rgb_frames)
     # attach index information (index among all images in dataset, x and y coordinate)
     image_indices, y_coordinates, x_coordinates = np.meshgrid(
         np.arange(images.shape[0]), np.arange(intrinsics[0]["height"]), np.arange(intrinsics[0]["width"]), indexing="ij"
@@ -1516,7 +1509,9 @@ def main_function(args):
     additional_indices = np.stack(
         [image_indices, x_coordinates, y_coordinates], axis=-1
     )  # N x height x width x 3 (image, x, y)
-
+    print("rays shape:", rays.shape)
+    print("images shape:", images.shape)
+    print("additional_indices shape:", additional_indices.shape)
     rays_rgb = np.concatenate(
         [rays, images[:, None], additional_indices[:, None]], 1
     )  # [N, ro+rd+rgb+ind, H, W, 3]
