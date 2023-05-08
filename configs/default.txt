@@ -1,8 +1,8 @@
 dataset_type = llff
 datadir = data/preprocessed_data
 
-rootdir = experiments/
-expname =  experiment_1
+rootdir = results/
+expname =  Itr_3.0
 
 debug = False
 
