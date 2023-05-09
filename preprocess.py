@@ -19,7 +19,7 @@ def video_preprocessing(args):
     ffmpeg_path = args.ffmpeg_path
 
     # extract frames
-    images_folder = os.path.join(output_folder, "images/")
+    images_folder = os.path.join(output_folder, "image_frames/")
     create_folder(images_folder)
     from subprocess import run, check_output, STDOUT, DEVNULL
 
@@ -97,21 +97,21 @@ def preprocess(args):
         print("cropped images")
         applyFilters(args)
         print("applied filters")
-        folder_path = os.path.join(args.output, 'filtered_images')
+        folder_path = os.path.join(args.output, 'images')
         run_pose_estimator(folder_path)
         print("estimated poses")
         depths = depth_bounds_estimation(folder_path)
         print("estimated depth", depths)
         pose_bounds = np.load('data/preprocessed_data/estimated_poses_flattened.npy')
         pose_bounds_with_depth = np.hstack([pose_bounds, depths])
-        np.save('data/preprocessed_data/pose_bounds.npy', pose_bounds_with_depth)
-        with open('data/preprocessed_data/pose_bounds.csv', 'w', newline='') as csvfile:
+        np.save('data/preprocessed_data/poses_bounds.npy', pose_bounds_with_depth)
+        with open('data/preprocessed_data/poses_bounds.csv', 'w', newline='') as csvfile:
             csv_writer = csv.writer(csvfile, delimiter=',')
             for row in pose_bounds_with_depth:
                 csv_writer.writerow(row)
 def crop(args):
     # Define the path to the directory containing the ultrasound images
-    img_dir = os.path.join(args.output, "images")
+    img_dir = os.path.join(args.output, "image_frames")
     images_folder = os.path.join(args.output, "crop_images/")
     create_folder(images_folder)
 
@@ -138,9 +138,9 @@ def crop(args):
 def applyFilters(args):
     # Create folders
     img_dir = os.path.join(args.output, "crop_images")
-    images_folder = os.path.join(args.output, "filtered_images/")
+    images_folder = os.path.join(args.output, "images/")
     create_folder(images_folder)
-    filtered_dir = os.path.join(args.output, "filtered_images")
+    filtered_dir = os.path.join(args.output, "images")
     def enhance_contrast(img):
         # Check if the input image is grayscale
         if len(img.shape) == 2:
