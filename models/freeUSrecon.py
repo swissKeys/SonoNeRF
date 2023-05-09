@@ -277,13 +277,39 @@ def run_pose_estimator(folder_path, model_string='mc72', model_folder='pretraine
     # Calculate the focal length
     f_x = (image_width_pixels * 0.5) / np.tan(FOV_horizontal * 0.5)
     f_y = (image_height_pixels * 0.5) / np.tan(FOV_vertical * 0.5)
+    #TODO: Made up values set to right ones when data availble
+    transducer_geometry = "curved"
+    apodization = "Hanning"
+    beamforming = "delay_and_sum"
+    focusing_depth = 80  # in mm (assumed value for the example)
+
+    # Factors based on transducer properties
+    geometry_factor = 1.0
+    if transducer_geometry == "curved":
+        geometry_factor = 1.05
+
+    apodization_factor = 1.0
+    if apodization == "Hanning":
+        apodization_factor = 1.02
+
+    beamforming_factor = 1.0
+    if beamforming == "delay_and_sum":
+        beamforming_factor = 1.03
+
+    # Combine the factors to calculate the fine-tuning factor
+    fine_tuning_factor = geometry_factor * apodization_factor * beamforming_factor
+
+    # Adjust the focal length based on the focusing depth and the fine-tuning factor
+    adjusted_f_x = f_x * focusing_depth * fine_tuning_factor
+    adjusted_f_y = f_y * focusing_depth * fine_tuning_factor
+
 
     # Estimate the optical center
     c_x = image_width_pixels * 0.5
     c_y = image_height_pixels * 0.5
 
-    cam_cali_mat = np.array([[f_x, 0, c_x],
-                            [0, f_y, c_y],
+    cam_cali_mat = np.array([[adjusted_f_x, 0, c_x],
+                            [0, adjusted_f_y, c_y],
                             [0, 0, 1]])
 
     device = torch.device("cpu")

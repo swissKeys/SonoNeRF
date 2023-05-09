@@ -6,13 +6,19 @@ def depth_bounds_estimation(frames_path):
     # Load frames
     frames = [cv2.imread(os.path.join(frames_path, f), cv2.IMREAD_GRAYSCALE) for f in sorted(os.listdir(frames_path)) if f.endswith('.jpg')]
 
-    # Step 3: Thresholding
+    # Step 3: Combined Otsu's method and Adaptive Gaussian Thresholding
     thresholded_frames = []
-    threshold_value = 127  # You might need to adjust this value based on your ultrasound images
 
     for frame in frames:
-        _, thresholded_frame = cv2.threshold(frame, threshold_value, 255, cv2.THRESH_BINARY)
-        thresholded_frames.append(thresholded_frame)
+        # Apply Otsu's thresholding
+        _, otsu_thresh = cv2.threshold(frame, 0, 255, cv2.THRESH_BINARY + cv2.THRESH_OTSU)
+
+        # Apply adaptive Gaussian thresholding
+        adaptive_thresh = cv2.adaptiveThreshold(frame, 255, cv2.ADAPTIVE_THRESH_GAUSSIAN_C, cv2.THRESH_BINARY, 11, 2)
+
+        # Combine the results
+        combined_thresh = cv2.bitwise_and(otsu_thresh, adaptive_thresh)
+        thresholded_frames.append(combined_thresh)
 
     # Step 4: Calculate depth bounds
     depth_bounds = []
