@@ -1712,7 +1712,7 @@ def main_function(args):
 
             print("Saved checkpoints at", path)
 
-        if i == args.i_video and i > 0:
+        if i % args.i_video == 0 and i > 0:
             # Turn on testing mode
             print("rendering test set...", flush=True)
             if len(render_poses) > 0 and len(i_test) > 0 and not dataset_extras["is_multiview"]:
