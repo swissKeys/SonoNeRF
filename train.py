@@ -425,7 +425,7 @@ def render_path(
     render_kwargs,
     ray_bending_latents,
     gt_imgs=None,
-    savedir=None,
+    savedir="results",
     render_factor=0,
     detailed_output=False,
     parallelized_render_function=None,
@@ -452,6 +452,8 @@ def render_path(
     all_details_and_rest = []
 
     t = time.time()
+    print("length rneder poses", len(render_poses))
+    print("length rneder intrinsics", len(intrinsics))
     for i, (c2w, intrin) in enumerate(tqdm(zip(render_poses, intrinsics))):
         print(i, time.time() - t)
         t = time.time()
@@ -1710,7 +1712,7 @@ def main_function(args):
 
             print("Saved checkpoints at", path)
 
-        if i % args.i_video == 0 and i > 0:
+        if i == args.i_video and i > 0:
             # Turn on testing mode
             print("rendering test set...", flush=True)
             if len(render_poses) > 0 and len(i_test) > 0 and not dataset_extras["is_multiview"]:
