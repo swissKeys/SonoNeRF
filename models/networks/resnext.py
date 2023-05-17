@@ -5,7 +5,6 @@ from torch.autograd import Variable
 import math
 from functools import partial
 import time
-import models.tools
 
 __all__ = ['ResNeXt', 'resnet50', 'resnet101']
 
