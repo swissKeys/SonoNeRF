@@ -79,6 +79,7 @@ def create_folder(folder):
 
 def preprocess(args):
 
+
     # output folder
     if args.output is None:
         if os.path.isfile(args.input):
@@ -88,18 +89,30 @@ def preprocess(args):
         else:
             args.output = args.input
     create_folder(args.output)
-
-    # video extraction
-    if os.path.isfile(args.input):
-        video_preprocessing(args)
-        args.input = args.output
-        crop(args)
-        print("cropped images")
-        applyFilters(args)
-        print("applied filters")
-        folder_path = os.path.join(args.output, 'images')
+    if args.input.lower().endswith(".mp4"):
+        if os.path.isfile(args.input):
+            video_preprocessing(args)
+            args.input = args.output
+            crop(args)
+            print("cropped images")
+            applyFilters(args)
+            print("applied filters")
+            folder_path = os.path.join(args.output, 'images')
+            print(folder_path)
+            run_pose_estimator(folder_path)
+            print("estimated poses")
+            depths = depth_bounds_estimation(folder_path)
+            print("estimated depth", depths)
+            pose_bounds = np.load('data/preprocessed_data/estimated_poses_flattened.npy')
+            pose_bounds_with_depth = np.hstack([pose_bounds, depths])
+            np.save('data/preprocessed_data/poses_bounds.npy', pose_bounds_with_depth)
+            with open('data/preprocessed_data/poses_bounds.csv', 'w', newline='') as csvfile:
+                csv_writer = csv.writer(csvfile, delimiter=',')
+                for row in pose_bounds_with_depth:
+                    csv_writer.writerow(row)
+    else: 
+        folder_path = os.path.join(args.input, 'images')
         run_pose_estimator(folder_path)
-        print("estimated poses")
         depths = depth_bounds_estimation(folder_path)
         print("estimated depth", depths)
         pose_bounds = np.load('data/preprocessed_data/estimated_poses_flattened.npy')
