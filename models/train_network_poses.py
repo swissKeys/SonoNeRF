@@ -113,7 +113,7 @@ if 'arc' == hostname:
     zion_common = '/raid/shared/guoh9'
     batch_size = 64
 # device = torch.device("cuda:{}".format(device_no) if torch.cuda.is_available() else "cpu")
-device = torch.device("cuda:{}".format(device_no))
+device = torch.device("cpu".format(device_no))
 # print('start device {}'.format(device))
 
 fan_mask = cv2.imread('data/avg_img.png', 0)
@@ -236,7 +236,7 @@ def define_model(model_type, pretrained_path='', neighbour_slice=args.neighbour_
     if pretrained_path:
         if path.isfile(pretrained_path):
             print('Loading model from <{}>...'.format(pretrained_path))
-            model_ft.load_state_dict(torch.load(pretrained_path, map_location='cuda:0'))
+            model_ft.load_state_dict(torch.load(pretrained_path, map_location='cpu'))
             # model_ft.load_state_dict(torch.load(pretrained_path))
             print('Done')
         else:
@@ -244,7 +244,7 @@ def define_model(model_type, pretrained_path='', neighbour_slice=args.neighbour_
     else:
         print('Train this model from scratch!')
 
-    model_ft.cuda()
+    #model_ft.cuda()
     model_ft = model_ft.to(device)
     print('define model device {}'.format(device))
     return model_ft
@@ -319,24 +319,19 @@ class FreehandUS4D(Dataset):
         """
         # case_folder = '/zion/guoh9/US_recon/US_vid_frames/train/Case0141'
         case_folder = self.samples[idx]
-        case_id = int(case_folder[-4:])
+        case_id = 1
 
         norm_path = path.normpath(case_folder)
         res = norm_path.split(os.sep)
         status = res[-2]
 
-        """ Make sure we do not use weird BK scans """
-        if case_id not in clean_ids[status]:
-            case_id = int(np.random.choice(clean_ids[status], 1)[0])
-            case_folder = path.join(data_dir, status, 'Case{:04}'.format(case_id))
-
-        aurora_pos = np.loadtxt(path.join(pos_dir, 'Case{:04}.txt'.format(case_id)))
-        calib_mat = np.loadtxt(path.join(uronav_dir, '{}/Case{:04}/Case{:04}_USCalib.txt'.format(status, case_id, case_id)))
+        aurora_pos = np.loadtxt(path.join(pos_dir, 'train', 'Case{:04}'.format(case_id), 'train_poses.txt'))
+        calib_mat = np.loadtxt(path.join("../data/rawdata/Sononerf_Data_1/uscalib.txt"))
 
         frame_num = len(os.listdir(case_folder))
         sample_size = args.neighbour_slice
-        # print('Case{:04} have {} frames'.format(case_id, frame_num))
-        # print('sample_size {}'.format(sample_size))
+        print('Case{:04} have {} frames'.format(case_id, frame_num))
+        print('sample_size {}'.format(sample_size))
 
         valid_range = frame_num - sample_size
         start_id = np.random.randint(low=0, high=valid_range, size=1)[0]
@@ -347,7 +342,7 @@ class FreehandUS4D(Dataset):
         select_ids = tools.sample_ids(slice_num=frame_num, neighbour_num=sample_size,
                                       sample_option='normal',
                                       random_reverse_prob=0, self_prob=0)
-        # print('{} slices, select_ids\n{}'.format(frame_num, select_ids))
+        print('{} slices, select_ids\n{}'.format(frame_num, select_ids))
         # time.sleep(30)
 
         sample_slices = []
@@ -356,8 +351,11 @@ class FreehandUS4D(Dataset):
         # for slice_index in select_ids:
         for i in range(select_ids.shape[0]):
             slice_index = select_ids[i]
+            print('slice_index', slice_index)
             slice_path = path.join(case_folder, '{:04}.jpg'.format(slice_index))
+            print('slice_path', slice_path)
             slice_img = cv2.imread(slice_path, 0)
+            print('slice_img', slice_img.shape)
             slice_img = data_transform(slice_img, masked_full=False)
             sample_slices.append(slice_img)
             # print('slice_img shape {}'.format(slice_img.shape))
@@ -768,23 +766,6 @@ def train_model(model, criterion, optimizer, scheduler, fn_save, num_epochs=25):
 
     return tv_hist
 
-def save_info():
-    file = open('data/experiment_diary/{}.txt'.format(now_str), 'a+')
-    file.write('Time_str: {}\n'.format(now_str))
-    # file.write('Initial_mode: {}\n'.format(args.init_mode))
-    file.write('Training_mode: {}\n'.format(args.training_mode))
-    file.write('Model_filename: {}\n'.format(args.model_filename))
-    file.write('Device_no: {}\n'.format(args.device_no))
-    file.write('Epochs: {}\n'.format(args.epochs))
-    file.write('Network_type: {}\n'.format(args.network_type))
-    file.write('Learning_rate: {}\n'.format(args.learning_rate))
-    file.write('Neighbour_slices: {}\n'.format(args.neighbour_slice))
-    file.write('Infomation: {}\n'.format(args.information))
-    file.write('Best_epoch: 0\n')
-    file.write('Val_loss: {:.4f}\n'.format(1000))
-    file.close()
-    print('Information has been saved!')
-
 def update_info(best_epoch, current_epoch, lowest_val_TRE):
     readFile = open('data/experiment_diary/{}.txt'.format(now_str))
     lines = readFile.readlines()
@@ -802,18 +783,15 @@ if __name__ == '__main__':
     # data_dir = path.join('/home/guoh9/tmp/US_vid_frames')
     # results_dir = path.join('/home/guoh9/tmp/US_vid_frames')
 
-    data_dir = path.join(zion_common, 'US_recon/US_vid_frames')
-    pos_dir = path.join(zion_common, 'US_recon/US_vid_pos')
-    uronav_dir = path.join(zion_common, 'uronav_data')
+    data_dir = "../data/images"
+    pos_dir = "../data/poses"
+    #uronav_dir = path.join(zion_common, 'uronav_data')
 
     train_ids = np.loadtxt('infos/train_ids.txt')
     val_ids = np.loadtxt('infos/val_ids.txt')
     clean_ids = {'train': train_ids, 'val': val_ids}
 
-    if 'arc' == hostname:
-        results_dir = '/home/guoh9/US_recon/results'
-    else:
-        results_dir = path.join(zion_common, 'US_recon/results')
+    results_dir = '../results'
 
     init_mode = args.init_mode
     network_type = args.network_type
@@ -836,7 +814,7 @@ if __name__ == '__main__':
     print('Number of training samples: {}'.format(dataset_sizes['train']))
     print('Number of validation samples: {}'.format(dataset_sizes['val']))
 
-    model_folder = '/zion/guoh9/US_recon/results'
+    model_folder = '../results'
     model_path = path.join(model_folder, '3d_best_Generator_{}.pth'.format(pretrain_model_str))  # 10
     # model_ft = define_model(model_type=network_type, pretrained_path=model_path)
     model_ft = define_model(model_type=network_type)
@@ -864,8 +842,6 @@ if __name__ == '__main__':
 
     now = datetime.now()
     now_str = now.strftime('%m%d-%H%M%S')
-
-    save_info()
 
     # Train and evaluate
     fn_best_model = path.join(results_dir, '3d_best_{}_{}.pth'.format(net, now_str))

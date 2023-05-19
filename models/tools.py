@@ -1,4 +1,5 @@
 import numpy as np
+import random
 
 
 
@@ -181,6 +182,8 @@ def get_format_dofs(batch_dofs, frames_num, neighbour_slice, cam_cali_mat, merge
 
 
 def dof2params(format_dofs):
+            
+            
             gen_param_results = []
             for i in range(format_dofs.shape[0]):
                 if i == 0:
@@ -199,3 +202,82 @@ def dof2params(format_dofs):
             print('pos_params shape {}'.format(pos_params.shape))
             # time.sleep(30)
             return pos_params
+
+def sample_ids(slice_num, neighbour_num, sample_option='skip', random_reverse_prob=0,
+               self_prob=0):
+    """
+    This function gives different sampling strategies.
+    :param slice_num: Number of total slices of a case
+    :param neighbour_num: How many slices to serve as one input
+    :param sample_option: skip range or normally consecutive
+    :param random_reverse_prob: probability of applying random reverse, 0 to be no random reverse
+    :return:
+    """
+    skip_ratio = 3
+
+    if sample_option in ['skip', 'skip_random'] and neighbour_num * skip_ratio > slice_num:
+        sample_option = 'normal'
+
+    if sample_option == 'skip':
+        start_range = slice_num - skip_ratio * neighbour_num
+        if start_range == 0:
+            start_id = 0
+        else:
+            start_id = np.random.randint(0, start_range, 1)[0]
+        end_id = start_id + skip_ratio * neighbour_num - 1
+        range = np.linspace(start_id, end_id, skip_ratio * neighbour_num)
+        np.random.shuffle(range)
+        select_ids = np.sort(range[:neighbour_num])
+    elif sample_option == 'skip_random':
+        ''' ending sample ID is randomly chose from latter half '''
+        ''' This function creates more varieties of sampling range'''
+        start_range = slice_num - skip_ratio * neighbour_num
+        if start_range == 0:
+            start_id = 0
+        else:
+            start_id = np.random.randint(0, start_range, 1)[0]
+        end_id = start_id + skip_ratio * neighbour_num - 1
+        central_id = int((start_id + end_id) / 2)
+
+        sample_end_id_pool = np.linspace(central_id, end_id, end_id - central_id + 1)
+        sample_end_id = int(np.random.choice(sample_end_id_pool, 1)[0])
+
+        sample_ratio = np.linspace(0, 1, neighbour_num)
+        select_ids = (sample_ratio * (sample_end_id - start_id) + start_id).astype(np.uint64)
+    elif sample_option == 'skip_random_fixed':
+        start_range = slice_num - skip_ratio * neighbour_num
+        if start_range == 0:
+            start_id = 0
+        else:
+            start_id = np.random.randint(0, start_range, 1)[0]
+        frame_gap_choices = [0, 1, 2, 3]
+        frame_gap_probs = [0, 1, 0, 0]
+        frame_gap_random = np.random.choice(frame_gap_choices, 1, p=frame_gap_probs)[0]
+        select_ids = np.linspace(start=start_id,
+                                 stop=start_id + (neighbour_num - 1) * frame_gap_random,
+                                 num=neighbour_num, endpoint=True)
+        # print(frame_gap_random)
+        # print(select_ids)
+        # time.sleep(30)
+    else:
+        start_range = slice_num - neighbour_num
+        if start_range == 0:
+            start_id = 0
+        else:
+            start_id = np.random.randint(0, start_range, 1)[0]
+        select_ids = np.linspace(start_id, start_id + neighbour_num - 1, neighbour_num)
+
+    if random.uniform(0, 1) < random_reverse_prob:
+        select_ids = np.flip(select_ids)
+
+    if random.uniform(0, 1) < self_prob:
+        ''' input the same slice for NS times '''
+        slice_id = random.randint(0, slice_num-1)
+        select_ids = slice_id * np.ones((neighbour_num,))
+        # print(select_ids)
+
+    select_ids = select_ids.astype(np.int64)
+    # print('selected ids {}'.format(select_ids))
+    # select_ids = np.random.shuffle(select_ids)
+    # print('shuffled selected ids {}'.format(select_ids))
+    return select_ids
