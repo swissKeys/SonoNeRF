@@ -329,7 +329,7 @@ class FreehandUS4D(Dataset):
         valid_ids = [int(filename.split('_')[1].split('.')[0]) for filename in image_filenames if filename.startswith('Image_') and filename.endswith('.jpg')]
         valid_ids.sort()
 
-        aurora_pos = np.loadtxt(path.join(pos_dir, 'train', 'Case{:04}'.format(case_id), 'train_poses.txt'))
+        aurora_pos = np.loadtxt(path.join("../data/poses/train/case0001/train_poses.txt"))
         calib_mat = np.loadtxt(path.join("../data/rawdata/Sononerf_Data_1/uscalib.txt"))
 
         frame_num = len(valid_ids)
@@ -434,15 +434,15 @@ def get_dist_loss(labels, outputs, start_params, calib_mat):
     # print('calib_mat shape {}'.format(calib_mat.shape))
 
     # print('labels_before\n{}'.format(labels.shape))
-    labels = labels.data.cuda().numpy()
-    outputs = outputs[0].data.cuda().numpy()
+    labels = labels.data.cpu().numpy()
+    outputs = outputs[0].data.cpu().numpy()
     if normalize_dof:
         labels = labels / dof_stats[:, 1] + dof_stats[:, 0]
         outputs = outputs / dof_stats[:, 1] + dof_stats[:, 0]
 
 
-    start_params = start_params.data.cuda().numpy()
-    calib_mat = calib_mat.data.cuda().numpy()
+    start_params = start_params.data.cpu().numpy()
+    calib_mat = calib_mat.data.cpu().numpy()
 
     if args.output_type == 'sum_dof':
         batch_errors = []
