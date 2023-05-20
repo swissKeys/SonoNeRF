@@ -325,10 +325,14 @@ class FreehandUS4D(Dataset):
         res = norm_path.split(os.sep)
         status = res[-2]
 
+        image_filenames = os.listdir(case_folder)
+        valid_ids = [int(filename.split('_')[1].split('.')[0]) for filename in image_filenames if filename.startswith('Image_') and filename.endswith('.jpg')]
+        valid_ids.sort()
+
         aurora_pos = np.loadtxt(path.join(pos_dir, 'train', 'Case{:04}'.format(case_id), 'train_poses.txt'))
         calib_mat = np.loadtxt(path.join("../data/rawdata/Sononerf_Data_1/uscalib.txt"))
 
-        frame_num = len(os.listdir(case_folder))
+        frame_num = len(valid_ids)
         sample_size = args.neighbour_slice
         print('Case{:04} have {} frames'.format(case_id, frame_num))
         print('sample_size {}'.format(sample_size))
@@ -339,9 +343,9 @@ class FreehandUS4D(Dataset):
         # start_mat = tools.params_to_mat44(trans_params=start_params, cam_cali_mat=calib_mat)
         # print('selected start index {}'.format(rand_num))
 
-        select_ids = tools.sample_ids(slice_num=frame_num, neighbour_num=sample_size,
-                                      sample_option='normal',
-                                      random_reverse_prob=0, self_prob=0)
+        valid_ids = list(range(frame_num))  # change this as appropriate
+        select_ids = tools.sample_ids(valid_ids, sample_size, sample_option='normal', random_reverse_prob=0, self_prob=0)
+
         print('{} slices, select_ids\n{}'.format(frame_num, select_ids))
         # time.sleep(30)
 
@@ -352,12 +356,16 @@ class FreehandUS4D(Dataset):
         for i in range(select_ids.shape[0]):
             slice_index = select_ids[i]
             print('slice_index', slice_index)
-            slice_path = path.join(case_folder, '{:04}.jpg'.format(slice_index))
+            slice_path = path.join(case_folder, 'Image_{:04}.jpg'.format(slice_index))
             print('slice_path', slice_path)
-            slice_img = cv2.imread(slice_path, 0)
-            print('slice_img', slice_img.shape)
-            slice_img = data_transform(slice_img, masked_full=False)
-            sample_slices.append(slice_img)
+            
+            if os.path.exists(slice_path):  # Check if the image exists before loading
+                slice_img = cv2.imread(slice_path, 0)
+                print('slice_img', slice_img.shape)
+                slice_img = data_transform(slice_img, masked_full=False)
+                sample_slices.append(slice_img)
+            else:
+                print(f'Frame {slice_index} does not exist in the dataset')
             # print('slice_img shape {}'.format(slice_img.shape))
 
             # if slice_index != select_ids[0]:
@@ -427,7 +435,7 @@ def get_dist_loss(labels, outputs, start_params, calib_mat):
 
     # print('labels_before\n{}'.format(labels.shape))
     labels = labels.data.cpu().numpy()
-    outputs = outputs.data.cpu().numpy()
+    outputs = outputs[0].data.cpu().numpy()
     if normalize_dof:
         labels = labels / dof_stats[:, 1] + dof_stats[:, 0]
         outputs = outputs / dof_stats[:, 1] + dof_stats[:, 0]
@@ -542,7 +550,7 @@ def get_dist_loss(labels, outputs, start_params, calib_mat):
 
 def get_correlation_loss(labels, outputs):
     # print('labels shape {}, outputs shape {}'.format(labels.shape, outputs.shape))
-    x = outputs.flatten()
+    x = outputs[0].flatten()
     y = labels.flatten()
     # print('x shape {}, y shape {}'.format(x.shape, y.shape))
     # print('x shape\n{}\ny shape\n{}'.format(x, y))
@@ -675,6 +683,7 @@ def train_model(model, criterion, optimizer, scheduler, fn_save, num_epochs=25):
                     # print('labels shape {}'.format(labels.shape))
                     # time.sleep(30)
                     outputs = model(inputs)
+                    print("outputs",outputs)  
                     # print('outputs shape {}'.format(outputs.shape))
                     # time.sleep(30)
 
@@ -696,7 +705,7 @@ def train_model(model, criterion, optimizer, scheduler, fn_save, num_epochs=25):
                     # print('dist_loss {:.5f}'.format(dist_loss))
                     # time.sleep(30)
 
-                    loss = criterion(outputs, labels)
+                    loss = criterion(outputs[0], labels)
 
                     # loss = loss_functions.dof_MSE(labels=labels, outputs=outputs,
                     #                               criterion=criterion, dof_based=True)
@@ -741,7 +750,7 @@ def train_model(model, criterion, optimizer, scheduler, fn_save, num_epochs=25):
                 # print('**** best model updated with dist={:.4f} ****'.format(lowest_dist))
                 print('**** best model updated with loss={:.4f} ****'.format(lowest_loss))
 
-        update_info(best_epoch=best_ep+1, current_epoch=epoch+1, lowest_val_TRE=lowest_loss)
+       # update_info(best_epoch=best_ep+1, current_epoch=epoch+1, lowest_val_TRE=lowest_loss)
         print('{}/{}: Tl: {:.4f}, Vl: {:.4f}, Td: {:.4f}, Vd: {:.4f}, Tc: {:.4f}, Vc: {:.4f}'.format(
             epoch + 1, num_epochs,
             tv_hist['train'][-1][0],
@@ -765,18 +774,6 @@ def train_model(model, criterion, optimizer, scheduler, fn_save, num_epochs=25):
     print()
 
     return tv_hist
-
-def update_info(best_epoch, current_epoch, lowest_val_TRE):
-    readFile = open('data/experiment_diary/{}.txt'.format(now_str))
-    lines = readFile.readlines()
-    readFile.close()
-
-    file = open('data/experiment_diary/{}.txt'.format(now_str), 'w')
-    file.writelines([item for item in lines[:-2]])
-    file.write('Best_epoch: {}/{}\n'.format(best_epoch, current_epoch))
-    file.write('Val_loss: {:.4f}'.format(lowest_val_TRE))
-    file.close()
-    print('Info updated in {}!'.format(now_str))
 
 
 if __name__ == '__main__':

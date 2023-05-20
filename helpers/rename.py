@@ -1,7 +1,7 @@
 import os
 
 # The path to your folder containing the images
-folder_path = "data/images/train/case0001"
+folder_path = "data/rawdata/Sononerf_Data_1/images"
 
 # List all the images in the folder
 image_filenames = os.listdir(folder_path)
@@ -10,14 +10,10 @@ image_filenames = os.listdir(folder_path)
 image_filenames.sort()
 
 # Iterate over the sorted filenames
-for filename in image_filenames:
-    # Split the filename to get the number
-    base, num = filename.split('_')
-    num, ext = num.split('.')
-    
+for i, filename in enumerate(image_filenames):
     # Create the new filename. 
     # Use str.zfill to make sure the number is 4 digits with leading zeros.
-    new_filename = f"{base}_{num.zfill(4)}.{ext}"
+    new_filename = f"Image_{str(i+1).zfill(4)}.jpg"
 
     # Create the full paths to the old and new filenames
     old_file_path = os.path.join(folder_path, filename)
