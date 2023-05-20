@@ -113,7 +113,7 @@ if 'arc' == hostname:
     zion_common = '/raid/shared/guoh9'
     batch_size = 64
 # device = torch.device("cuda:{}".format(device_no) if torch.cuda.is_available() else "cpu")
-device = torch.device("cpu".format(device_no))
+device = torch.device("cuda:{}".format(device_no))
 # print('start device {}'.format(device))
 
 fan_mask = cv2.imread('data/avg_img.png', 0)
@@ -236,7 +236,7 @@ def define_model(model_type, pretrained_path='', neighbour_slice=args.neighbour_
     if pretrained_path:
         if path.isfile(pretrained_path):
             print('Loading model from <{}>...'.format(pretrained_path))
-            model_ft.load_state_dict(torch.load(pretrained_path, map_location='cpu'))
+            model_ft.load_state_dict(torch.load(pretrained_path, map_location='cuda'))
             # model_ft.load_state_dict(torch.load(pretrained_path))
             print('Done')
         else:
@@ -434,15 +434,15 @@ def get_dist_loss(labels, outputs, start_params, calib_mat):
     # print('calib_mat shape {}'.format(calib_mat.shape))
 
     # print('labels_before\n{}'.format(labels.shape))
-    labels = labels.data.cpu().numpy()
-    outputs = outputs[0].data.cpu().numpy()
+    labels = labels.data.cuda().numpy()
+    outputs = outputs[0].data.cuda().numpy()
     if normalize_dof:
         labels = labels / dof_stats[:, 1] + dof_stats[:, 0]
         outputs = outputs / dof_stats[:, 1] + dof_stats[:, 0]
 
 
-    start_params = start_params.data.cpu().numpy()
-    calib_mat = calib_mat.data.cpu().numpy()
+    start_params = start_params.data.cuda().numpy()
+    calib_mat = calib_mat.data.cuda().numpy()
 
     if args.output_type == 'sum_dof':
         batch_errors = []
