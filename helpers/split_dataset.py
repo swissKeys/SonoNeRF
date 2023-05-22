@@ -26,13 +26,14 @@ split_idx = int(len(poses) * train_ratio)
 train_indices, val_indices = indices[:split_idx], indices[split_idx:]
 
 # Write the train and validation poses to separate files
+train_poses = [poses[idx] for idx in train_indices]
+val_poses = [poses[idx] for idx in val_indices]
+
 with open('data/poses/train/case0001/train_poses.txt', 'w') as file:
-    for idx in train_indices:
-        file.write(poses[idx])
+    file.writelines(train_poses)
 
 with open('data/poses/val/case0001/val_poses.txt', 'w') as file:
-    for idx in val_indices:
-        file.write(poses[idx])
+    file.writelines(val_poses)
 
 # Copy the images into separate train and validation directories without renaming
 image_filenames = sorted(os.listdir(folder_path))
@@ -41,8 +42,16 @@ for i, filename in enumerate(image_filenames):
 
     if i in train_indices:
         new_folder_path = "data/images/train/case0001"
+        new_poses_path = "data/poses/train/case0001"
     else:
         new_folder_path = "data/images/val/case0001"
+        new_poses_path = "data/poses/val/case0001"
 
     new_file_path = os.path.join(new_folder_path, filename)  # The filename stays the same
+    new_poses_file_path = os.path.join(new_poses_path, "poses.txt")
+    
     shutil.copy(old_file_path, new_file_path)  # Copy the file instead of moving it
+    
+    # Update the corresponding poses file with the correct line number
+    with open(new_poses_file_path, 'a') as file:
+        file.write(poses[i])
