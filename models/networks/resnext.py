@@ -192,8 +192,8 @@ class ResNeXt(nn.Module):
 
     def forward(self, x):
 
-        # show_size = False
-        show_size = True
+        show_size = False
+        #show_size = True
         if show_size:
             print('input shape {}'.format(x.shape))
             x = self.conv1(x)

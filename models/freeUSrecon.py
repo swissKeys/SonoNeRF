@@ -261,8 +261,19 @@ def run_pose_estimator(folder_path, model_string='mc72', model_folder='pretraine
     model_ft = model_ft.to(device)
 
     # Parameters from the ultrasound system
-    resolution = 0.71  # Spatial resolution in mm/pixel
-    center_frequency = 2.22  # Center frequency in MHz (maybe useul for fien tuning)
+    speed_of_sound = 1540  # m/s
+    frequency = 10 * 10**6  # Hz
+    axial_resolution = speed_of_sound / (2 * frequency)  # in meters
+    axial_resolution_mm = axial_resolution * 1000  # converting to mm
+
+    depth = 0.8  # in cm
+    wavelength = speed_of_sound / frequency  # in meters
+    aperture_diameter = 0.8  # in cm, assumed value
+    lateral_resolution = wavelength * (depth / aperture_diameter)  # in meters
+    lateral_resolution_mm = lateral_resolution * 1000  # converting to mm
+
+    resolution = np.sqrt(axial_resolution**2 + lateral_resolution**2)
+    center_frequency = 10.0  # Center frequency in MHz
     # Image dimensions in pixels
     image_width_pixels = images.shape[2]
     image_height_pixels = images.shape[3]
@@ -278,41 +289,28 @@ def run_pose_estimator(folder_path, model_string='mc72', model_folder='pretraine
     # Calculate the focal length
     f_x = (image_width_pixels * 0.5) / np.tan(FOV_horizontal * 0.5)
     f_y = (image_height_pixels * 0.5) / np.tan(FOV_vertical * 0.5)
-    #TODO: Made up values set to right ones when data availble
-    transducer_geometry = "curved"
-    apodization = "Hanning"
-    beamforming = "delay_and_sum"
-    focusing_depth = 80  # in mm (assumed value for the example)
 
-    # Factors based on transducer properties
-    geometry_factor = 1.0
-    if transducer_geometry == "curved":
-        geometry_factor = 1.05
+    # Assuming that the higher the center frequency, the more accurate the ultrasound image is
+    # therefore, we could adjust the focal length with this factor, but it's a speculation.
+    frequency_factor = center_frequency / 2.22
 
-    apodization_factor = 1.0
-    if apodization == "Hanning":
-        apodization_factor = 1.02
-
-    beamforming_factor = 1.0
-    if beamforming == "delay_and_sum":
-        beamforming_factor = 1.03
-
-    # Combine the factors to calculate the fine-tuning factor
-    fine_tuning_factor = geometry_factor * apodization_factor * beamforming_factor
-
-    # Adjust the focal length based on the focusing depth and the fine-tuning factor
-    adjusted_f_x = f_x * focusing_depth * fine_tuning_factor
-    adjusted_f_y = f_y * focusing_depth * fine_tuning_factor
-
+    # Adjusted focal length
+    adjusted_f_x = f_x * frequency_factor
+    adjusted_f_y = f_y * frequency_factor
 
     # Estimate the optical center
     c_x = image_width_pixels * 0.5
     c_y = image_height_pixels * 0.5
 
-    cam_cali_mat = np.array([[adjusted_f_x, 0, c_x],
-                            [0, adjusted_f_y, c_y],
-                            [0, 0, 1]])
+    # Translation information
+    translation = np.array([0, 0, 0])  # Adjust the translation values based on your requirements
 
+    # Create the 4x4 transformation matrix
+    cam_cali_mat = np.array([[adjusted_f_x, 0, c_x, translation[0]],
+                            [0, adjusted_f_y, c_y, translation[1]],
+                            [0, 0, 1, translation[2]],
+                            [0, 0, 0, 1]])
+    
     device = torch.device("cpu")
     frames_num = len(images)
     print("images size" ,images.shape)

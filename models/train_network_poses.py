@@ -46,7 +46,7 @@ parser.add_argument('-m', '--model_filename',
 parser.add_argument('-l', '--learning_rate',
                     type=float,
                     help='Learning rate',
-                    default=5e-6)
+                    default=1e-4)
 
 parser.add_argument('-d', '--device_no',
                     type=int,
@@ -57,7 +57,7 @@ parser.add_argument('-d', '--device_no',
 parser.add_argument('-e', '--epochs',
                     type=int,
                     help='number of training epochs',
-                    default=500)
+                    default=200)
 
 parser.add_argument('-n', '--network_type',
                     type=str,
@@ -93,7 +93,7 @@ pretrain_model_str = '0213-092230'
 networks3D = ['resnext50', 'resnext101', 'densenet121', 'mynet', 'mynet2', 'p3d']
 
 net = 'Generator'
-batch_size = 28
+batch_size = 8
 use_last_pretrained = False
 current_epoch = 0
 
@@ -105,15 +105,8 @@ training_progress = np.zeros((epochs, 4))
 
 hostname = os.uname().nodename
 zion_common = '/zion/guoh9'
-on_arc = False
-if 'arc' == hostname:
-    on_arc = True
-    print('on_arc {}'.format(on_arc))
-    # device = torch.device("cuda:{}".format(device_no))
-    zion_common = '/raid/shared/guoh9'
-    batch_size = 64
 # device = torch.device("cuda:{}".format(device_no) if torch.cuda.is_available() else "cpu")
-device = torch.device("cuda:{}".format(device_no))
+device = torch.device("cpu".format(device_no))
 # print('start device {}'.format(device))
 
 fan_mask = cv2.imread('data/avg_img.png', 0)
@@ -236,7 +229,7 @@ def define_model(model_type, pretrained_path='', neighbour_slice=args.neighbour_
     if pretrained_path:
         if path.isfile(pretrained_path):
             print('Loading model from <{}>...'.format(pretrained_path))
-            model_ft.load_state_dict(torch.load(pretrained_path, map_location='cuda'))
+            model_ft.load_state_dict(torch.load(pretrained_path, map_location='cpu'))
             # model_ft.load_state_dict(torch.load(pretrained_path))
             print('Done')
         else:
@@ -329,13 +322,12 @@ class FreehandUS4D(Dataset):
         valid_ids = [int(filename.split('_')[1].split('.')[0]) for filename in image_filenames if filename.startswith('Image_') and filename.endswith('.jpg')]
         valid_ids.sort()
 
-        aurora_pos = np.loadtxt(path.join("../data/poses/train/case0001/train_poses.txt"))
+        aurora_pos = np.loadtxt(path.join(pos_dir, 'train', 'Case{:04}'.format(case_id), 'poses.txt'))
         calib_mat = np.loadtxt(path.join("../data/rawdata/Sononerf_Data_1/uscalib.txt"))
-
         frame_num = len(valid_ids)
         sample_size = args.neighbour_slice
-        print('Case{:04} have {} frames'.format(case_id, frame_num))
-        print('sample_size {}'.format(sample_size))
+        #print('Case{:04} have {} frames'.format(case_id, frame_num))
+        #print('sample_size {}'.format(sample_size))
 
         valid_range = frame_num - sample_size
         start_id = np.random.randint(low=0, high=valid_range, size=1)[0]
@@ -346,7 +338,7 @@ class FreehandUS4D(Dataset):
         valid_ids = list(range(frame_num))  # change this as appropriate
         select_ids = tools.sample_ids(valid_ids, sample_size, sample_option='normal', random_reverse_prob=0, self_prob=0)
 
-        print('{} slices, select_ids\n{}'.format(frame_num, select_ids))
+        #print('{} slices, select_ids\n{}'.format(frame_num, select_ids))
         # time.sleep(30)
 
         sample_slices = []
@@ -355,23 +347,20 @@ class FreehandUS4D(Dataset):
         # for slice_index in select_ids:
         for i in range(select_ids.shape[0]):
             slice_index = select_ids[i]
-            print('slice_index', slice_index)
             slice_path = path.join(case_folder, 'Image_{:04}.jpg'.format(slice_index))
-            print('slice_path', slice_path)
             
             if os.path.exists(slice_path):  # Check if the image exists before loading
                 slice_img = cv2.imread(slice_path, 0)
-                print('slice_img', slice_img.shape)
                 slice_img = data_transform(slice_img, masked_full=False)
                 sample_slices.append(slice_img)
-            else:
-                print(f'Frame {slice_index} does not exist in the dataset')
             # print('slice_img shape {}'.format(slice_img.shape))
 
             # if slice_index != select_ids[0]:
             if i != select_ids.shape[0] - 1:
                 first_id = select_ids[i]
                 second_id = select_ids[i + 1]
+                #print("first id", first_id)
+                #print("pose for first id", aurora_pos[first_id, :])
                 dof = tools.get_6dof_label(trans_params1=aurora_pos[first_id, :],
                                            trans_params2=aurora_pos[second_id, :],
                                            cam_cali_mat=calib_mat)
@@ -683,7 +672,6 @@ def train_model(model, criterion, optimizer, scheduler, fn_save, num_epochs=25):
                     # print('labels shape {}'.format(labels.shape))
                     # time.sleep(30)
                     outputs = model(inputs)
-                    print("outputs",outputs)  
                     # print('outputs shape {}'.format(outputs.shape))
                     # time.sleep(30)
 
@@ -765,7 +753,7 @@ def train_model(model, criterion, optimizer, scheduler, fn_save, num_epochs=25):
         training_progress[epoch][1] = tv_hist['val'][-1][0]
         training_progress[epoch][2] = tv_hist['train'][-1][1]
         training_progress[epoch][3] = tv_hist['val'][-1][1]
-        np.savetxt(txt_path, training_progress)
+        np.savetxt(txt_path, training_progress, fmt='%.4f')
 
     time_elapsed = time.time() - since
     print('*' * 10 + 'Training complete in {:.0f}m {:.0f}s'.format(
@@ -777,6 +765,7 @@ def train_model(model, criterion, optimizer, scheduler, fn_save, num_epochs=25):
 
 
 if __name__ == '__main__':
+
     # data_dir = path.join('/home/guoh9/tmp/US_vid_frames')
     # results_dir = path.join('/home/guoh9/tmp/US_vid_frames')
 
@@ -816,10 +805,10 @@ if __name__ == '__main__':
     # model_ft = define_model(model_type=network_type, pretrained_path=model_path)
     model_ft = define_model(model_type=network_type)
 
-    # criterion = nn.CrossEntropyLoss()
+    #criterion = nn.CrossEntropyLoss()
     criterion = nn.MSELoss()
-    # criterion = nn.()
-    # criterion = nn.L1Loss()
+    #criterion = nn.()
+    #criterion = nn.L1Loss()
 
     # mahalanobis_dist = mahalanobis.MahalanobisMetricLoss()
 
@@ -831,7 +820,7 @@ if __name__ == '__main__':
         lr = args.learning_rate
         print('Learning rate = {}'.format(lr))
 
-    optimizer = optim.Adam(model_ft.parameters(), lr=lr)
+    optimizer = optim.Adam(model_ft.parameters(), lr=lr) # L2 regularization this now
     # optimizer = optim.Adagrad(model_ft.parameters(), lr=1)
     # optimizer = optim.SGD(model_ft.parameters(), lr=lr)
 
@@ -839,6 +828,16 @@ if __name__ == '__main__':
 
     now = datetime.now()
     now_str = now.strftime('%m%d-%H%M%S')
+
+    def save_args_to_file(args):
+        with open(path.join(results_dir, 'stats_{}_{}.txt'.format(net, now_str)), 'w') as f:
+            for arg in vars(args):
+                f.write(f'{arg}: {getattr(args, arg)}\n')
+            f.write(f'Optimizer: {optimizer}\n') 
+            f.write(f'Loss function: {criterion}\n')
+            f.write(f'Batchsize {batch_size}') 
+
+    save_args_to_file(args)
 
     # Train and evaluate
     fn_best_model = path.join(results_dir, '3d_best_{}_{}.pth'.format(net, now_str))
@@ -856,6 +855,30 @@ if __name__ == '__main__':
     # np.save(fn_hist, hist_ft)
 
     np.savetxt(txt_path, training_progress)
+
+    import matplotlib.pyplot as plt
+    import numpy as np
+
+    # Load data from file
+    data = np.loadtxt(txt_path)
+
+    # Create a figure and a set of subplots
+    fig, ax = plt.subplots()
+
+    # Plot data
+    ax.plot(data[:,0], color='blue', label='Train Loss')  # Assuming column 0 is Training Loss
+    ax.plot(data[:,1], color='orange', label='Val Loss')  # Assuming column 1 is Validation Loss
+
+    # Set labels
+    ax.set_xlabel('Epoch')
+    ax.set_ylabel('Value')
+
+    # Add legend to clarify which color corresponds to which data
+    ax.legend()
+
+    # Display the plot
+    plt.show()
+
 
     now = datetime.now()
     now_stamp = now.strftime('%Y-%m-%d %H:%M:%S')
