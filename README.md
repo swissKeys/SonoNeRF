@@ -14,7 +14,7 @@ sudo apt-get install imagemagick
 ```
 * To preprocess data run:
 ```
-python preprocess.py --input data/rawdata/volunteer01.mp4 --output data/preprocessed_data
+python preprocess.py --input data/rawdata/Sononerf_Data_1 --output data/preprocessed_data
 ```
 * To train Nerf:
 ```

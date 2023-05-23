@@ -2,6 +2,7 @@
 import numpy as np
 import os
 import pathlib
+import shutil
 import sys
 import csv
 import cv2
@@ -122,6 +123,10 @@ def preprocess(args):
             csv_writer = csv.writer(csvfile, delimiter=',')
             for row in pose_bounds_with_depth:
                 csv_writer.writerow(row)
+        # Copy the 'images' folder to 'data/preprocessed_data'
+        images_folder_path = os.path.join(args.input, 'images')
+        destination_folder_path = 'data/preprocessed_data/images'
+        shutil.copytree(images_folder_path, destination_folder_path)
 def crop(args):
     # Define the path to the directory containing the ultrasound images
     img_dir = os.path.join(args.output, "image_frames")

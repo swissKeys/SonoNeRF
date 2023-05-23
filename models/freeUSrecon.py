@@ -239,10 +239,9 @@ def create_3x5_matrices(estimated_poses, cam_cali_mat):
         matrices_3x5.append(matrix_3x5)
 
     return matrices_3x5
-
 # Load the pretrained model
 
-def run_pose_estimator(folder_path, model_string='mc72', model_folder='pretrained_networks', output_filename='output.csv', device_no=0):
+def run_pose_estimator(folder_path, model_string='0522-163935', model_folder='pretrained_networks', output_filename='output.csv', device_no=0):
     model_folder = 'models/pretrained_networks'
     model_path = Path(model_folder, f'3d_best_Generator_{model_string}.pth')
 
@@ -302,15 +301,10 @@ def run_pose_estimator(folder_path, model_string='mc72', model_folder='pretraine
     c_x = image_width_pixels * 0.5
     c_y = image_height_pixels * 0.5
 
-    # Translation information
-    translation = np.array([0, 0, 0])  # Adjust the translation values based on your requirements
-
-    # Create the 4x4 transformation matrix
-    cam_cali_mat = np.array([[adjusted_f_x, 0, c_x, translation[0]],
-                            [0, adjusted_f_y, c_y, translation[1]],
-                            [0, 0, 1, translation[2]],
-                            [0, 0, 0, 1]])
-    
+    cam_cali_mat = np.array([[adjusted_f_x, 0, c_x],
+                                [0, adjusted_f_y, c_y],
+                                [0, 0, 1]])
+        
     device = torch.device("cpu")
     frames_num = len(images)
     print("images size" ,images.shape)
