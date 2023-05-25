@@ -1208,7 +1208,7 @@ def config_parser():
         "--i_img", type=int, default=500, help="frequency of tensorboard image logging"
     )
     parser.add_argument(
-        "--i_weights", type=int, default=1000, help="frequency of weight ckpt saving"
+        "--i_weights", type=int, default=100, help="frequency of weight ckpt saving"
     )
     parser.add_argument(
         "--i_testset", type=int, default=50000, help="frequency of testset saving"
@@ -1216,7 +1216,7 @@ def config_parser():
     parser.add_argument(
         "--i_video",
         type=int,
-        default=50000,
+        default=100,
         help="frequency of render_poses video saving",
     )
 
@@ -1679,7 +1679,7 @@ def main_function(args):
             for l in ray_bending_latents_list:
                 all_latents = torch.cat([all_latents, l.cpu().unsqueeze(0)], 0)
 
-            if i % 50000 == 0:
+            if i % 100 == 0:
                 store_extra = True
                 path = os.path.join(logdir, "{:06d}.tar".format(i))
             else:
@@ -1788,7 +1788,7 @@ def main_function(args):
                         "imageio.mimwrite() failed. maybe ffmpeg is not installed properly?"
                     )
 
-            if i >= N_iters + 1 - args.i_video:
+            if i % args.i_video == 0:
                 print("rendering full training set...", flush=True)
                 with torch.no_grad():
                     rgbs, disps = render_path(
