@@ -25,12 +25,13 @@ def load_images(folder_path, target_size=(224, 224)):
     for image_file in image_files:
         if image_file.endswith(".jpg"):
             image_path = os.path.join(folder_path, image_file)
-            img = Image.open(image_path)
-            img = img.resize(target_size, Image.ANTIALIAS)  # Resize the image
-            img_array = np.asarray(img, dtype=np.float32)  # Convert to float32
+            img = Image.open(image_path).convert('L')  # Convert to grayscale
+            img = img.resize(target_size, Image.ANTIALIAS)
+            img_array = np.asarray(img, dtype=np.float32)[..., np.newaxis]  # Add grayscale channel
             images.append(img_array)
     images = np.array(images)
-    images = np.expand_dims(images, axis=1)  # Add channel dimension
+    images = np.moveaxis(images, -1, 1)  # Move the channel to the second dimension
+    print("normal shape", images.shape)
     return images
 
 
@@ -102,17 +103,6 @@ def define_model(model_type, pretrained_path,
     else:
         # model_ft.fc = nn.Linear(128, (neighbour_slice - 1) * 6)
         model_ft.fc = nn.Linear(num_ftrs, (neighbour_slice - 1) * 6)
-
-
-
-    # if args.training_mode == 'finetune':
-    #     model_path = path.join(results_dir, args.model_filename)
-    #     if path.isfile(model_path):
-    #         print('Loading model from <{}>...'.format(model_path))
-    #         model_ft.load_state_dict(torch.load(model_path))
-    #         print('Done')
-    #     else:
-    #         print('<{}> not exists! Training from scratch...'.format(model_path))
 
     if pretrained_path:
         if path.isfile(pretrained_path):
