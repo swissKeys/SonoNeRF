@@ -1,17 +1,13 @@
 import numpy as np
 
-# Open the text file
-with open('processed_data_file.txt', 'r') as file:
-    lines = file.readlines()
+# Read the CSV file
+data = np.loadtxt('data/preprocessed_data/poses_bounds_estimated.csv', delimiter=',')
 
-# Add "0 8" to each line
-lines_with_depthbounds = [line.strip() + " 10 297\n" for line in lines]
+# Replace the last two values in each line with 10 and 297
+data[:, -2:] = 10, 297
 
-# Convert to NumPy array
-data = np.loadtxt(lines_with_depthbounds)
-
-# Save as CSV file
+# Save as a new CSV file
 np.savetxt('poses_bounds.csv', data, delimiter=',')
 
-# Save as NumPy .npy file
+# Save as a new NumPy .npy file
 np.save('poses_bounds.npy', data)
