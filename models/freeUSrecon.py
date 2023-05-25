@@ -25,13 +25,12 @@ def load_images(folder_path, target_size=(224, 224)):
     for image_file in image_files:
         if image_file.endswith(".jpg"):
             image_path = os.path.join(folder_path, image_file)
-            img = Image.open(image_path).convert('L')  # Convert to grayscale
-            img = img.resize(target_size, Image.ANTIALIAS)
-            img_array = np.asarray(img, dtype=np.float32)[..., np.newaxis]  # Add grayscale channel
+            img = Image.open(image_path)
+            img = img.resize(target_size, Image.ANTIALIAS)  # Resize the image
+            img_array = np.asarray(img, dtype=np.float32)  # Convert to float32
             images.append(img_array)
     images = np.array(images)
-    images = np.moveaxis(images, -1, 1)  # Move the channel to the second dimension
-    print("normal shape", images.shape)
+    images = np.expand_dims(images, axis=1)  # Add channel dimension
     return images
 
 
@@ -243,7 +242,7 @@ def create_3x5_matrices(estimated_poses, cam_cali_mat):
 # Load the pretrained model
 
 def run_pose_estimator(folder_path, model_string='mc72', model_folder='pretrained_networks', output_filename='output.csv', device_no=0):
-    model_folder = 'models/pretrained_networks'
+    model_folder = 'pretrained_networks'
     model_path = Path(model_folder, f'3d_best_Generator_{model_string}.pth')
 
     network_type = 'resnext50'
@@ -278,39 +277,13 @@ def run_pose_estimator(folder_path, model_string='mc72', model_folder='pretraine
     # Calculate the focal length
     f_x = (image_width_pixels * 0.5) / np.tan(FOV_horizontal * 0.5)
     f_y = (image_height_pixels * 0.5) / np.tan(FOV_vertical * 0.5)
-    #TODO: Made up values set to right ones when data availble
-    transducer_geometry = "curved"
-    apodization = "Hanning"
-    beamforming = "delay_and_sum"
-    focusing_depth = 80  # in mm (assumed value for the example)
-
-    # Factors based on transducer properties
-    geometry_factor = 1.0
-    if transducer_geometry == "curved":
-        geometry_factor = 1.05
-
-    apodization_factor = 1.0
-    if apodization == "Hanning":
-        apodization_factor = 1.02
-
-    beamforming_factor = 1.0
-    if beamforming == "delay_and_sum":
-        beamforming_factor = 1.03
-
-    # Combine the factors to calculate the fine-tuning factor
-    fine_tuning_factor = geometry_factor * apodization_factor * beamforming_factor
-
-    # Adjust the focal length based on the focusing depth and the fine-tuning factor
-    adjusted_f_x = f_x * focusing_depth * fine_tuning_factor
-    adjusted_f_y = f_y * focusing_depth * fine_tuning_factor
-
 
     # Estimate the optical center
     c_x = image_width_pixels * 0.5
     c_y = image_height_pixels * 0.5
 
-    cam_cali_mat = np.array([[adjusted_f_x, 0, c_x],
-                            [0, adjusted_f_y, c_y],
+    cam_cali_mat = np.array([[f_x, 0, c_x],
+                            [0, f_y, c_y],
                             [0, 0, 1]])
 
     device = torch.device("cpu")
