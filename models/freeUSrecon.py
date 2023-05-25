@@ -25,13 +25,12 @@ def load_images(folder_path, target_size=(224, 224)):
     for image_file in image_files:
         if image_file.endswith(".jpg"):
             image_path = os.path.join(folder_path, image_file)
-            img = Image.open(image_path).convert('L')  # Convert to grayscale
-            img = img.resize(target_size, Image.ANTIALIAS)
-            img_array = np.asarray(img, dtype=np.float32)[..., np.newaxis]  # Add grayscale channel
+            img = Image.open(image_path)
+            img = img.resize(target_size, Image.ANTIALIAS)  # Resize the image
+            img_array = np.asarray(img, dtype=np.float32)  # Convert to float32
             images.append(img_array)
     images = np.array(images)
-    images = np.moveaxis(images, -1, 1)  # Move the channel to the second dimension
-    print("normal shape", images.shape)
+    images = np.expand_dims(images, axis=1)  # Add channel dimension
     return images
 
 
@@ -114,7 +113,6 @@ def define_model(model_type, pretrained_path,
             print('<{}> not exists! Training from scratch...'.format(pretrained_path))
     else:
         print('Train this model from scratch!')
-
     #model_ft.cuda()
     device = torch.device("cpu")
     model_ft = model_ft.to(device)
@@ -232,7 +230,7 @@ def create_3x5_matrices(estimated_poses, cam_cali_mat):
 # Load the pretrained model
 
 def run_pose_estimator(folder_path, model_string='mc72', model_folder='pretrained_networks', output_filename='output.csv', device_no=0):
-    model_folder = 'pretrained_networks'
+    model_folder = 'models/pretrained_networks'
     model_path = Path(model_folder, f'3d_best_Generator_{model_string}.pth')
 
     network_type = 'resnext50'
