@@ -5,7 +5,7 @@ with open('processed_data_file.txt', 'r') as file:
     lines = file.readlines()
 
 # Add "0 8" to each line
-lines_with_depthbounds = [line.strip() + " 0 8\n" for line in lines]
+lines_with_depthbounds = [line.strip() + " 10 297\n" for line in lines]
 
 # Convert to NumPy array
 data = np.loadtxt(lines_with_depthbounds)
