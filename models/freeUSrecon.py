@@ -231,7 +231,7 @@ def create_3x5_matrices(estimated_poses, cam_cali_mat):
 # Load the pretrained model
 
 def run_pose_estimator(folder_path, model_string='0522-163935', model_folder='pretrained_networks', output_filename='output.csv', device_no=0):
-    model_folder = 'models/pretrained_networks'
+    model_folder = 'pretrained_networks'
     model_path = Path(model_folder, f'3d_best_Generator_{model_string}.pth')
 
     network_type = 'resnext50'
