@@ -81,7 +81,7 @@ def create_folder(folder):
 def preprocess(args):
 
 
-    # output folder
+    # Set output folder
     if args.output is None:
         if os.path.isfile(args.input):
             input_folder, input_file = os.path.split(args.input)
@@ -89,44 +89,36 @@ def preprocess(args):
             args.output = os.path.join(input_folder, input_name)
         else:
             args.output = args.input
+
     create_folder(args.output)
-    if args.input.lower().endswith(".mp4"):
-        if os.path.isfile(args.input):
-            video_preprocessing(args)
-            args.input = args.output
-            crop(args)
-            print("cropped images")
-            applyFilters(args)
-            print("applied filters")
-            folder_path = os.path.join(args.output, 'images')
-            print(folder_path)
-            run_pose_estimator(folder_path)
-            print("estimated poses")
-            depths = depth_bounds_estimation(folder_path)
-            print("estimated depth", depths)
-            pose_bounds = np.load('data/preprocessed_data/estimated_poses_flattened.npy')
-            pose_bounds_with_depth = np.hstack([pose_bounds, depths])
-            np.save('data/preprocessed_data/poses_bounds.npy', pose_bounds_with_depth)
-            with open('data/preprocessed_data/poses_bounds.csv', 'w', newline='') as csvfile:
-                csv_writer = csv.writer(csvfile, delimiter=',')
-                for row in pose_bounds_with_depth:
-                    csv_writer.writerow(row)
-    else: 
-        folder_path = os.path.join(args.input, 'images')
-        run_pose_estimator(folder_path)
-        depths = depth_bounds_estimation(folder_path)
-        print("estimated depth", depths)
-        pose_bounds = np.load('data/preprocessed_data/estimated_poses_flattened.npy')
-        pose_bounds_with_depth = np.hstack([pose_bounds, depths])
-        np.save('data/preprocessed_data/poses_bounds.npy', pose_bounds_with_depth)
-        with open('data/preprocessed_data/poses_bounds.csv', 'w', newline='') as csvfile:
-            csv_writer = csv.writer(csvfile, delimiter=',')
-            for row in pose_bounds_with_depth:
-                csv_writer.writerow(row)
+    
+    if args.input.lower().endswith(".mp4") and os.path.isfile(args.input):
+        video_preprocessing(args)
+        args.input = args.output
+        crop(args)
+        applyFilters(args)
+
+    folder_path = os.path.join(args.output, 'images')
+
+    # Common operations for both video and non-video inputs
+    run_pose_estimator(folder_path)
+    depths = depth_bounds_estimation(folder_path)
+    pose_bounds = np.load('data/preprocessed_data/estimated_poses_flattened.npy')
+    pose_bounds_with_depth = np.hstack([pose_bounds, depths])
+
+    np.save('data/preprocessed_data/poses_bounds.npy', pose_bounds_with_depth)
+
+    with open('data/preprocessed_data/poses_bounds.csv', 'w', newline='') as csvfile:
+        csv_writer = csv.writer(csvfile, delimiter=',')
+        for row in pose_bounds_with_depth:
+            csv_writer.writerow(row)
+    
+    if not args.input.lower().endswith(".mp4"):
         # Copy the 'images' folder to 'data/preprocessed_data'
         images_folder_path = os.path.join(args.input, 'images')
         destination_folder_path = 'data/preprocessed_data/images'
         shutil.copytree(images_folder_path, destination_folder_path)
+
 def crop(args):
     # Define the path to the directory containing the ultrasound images
     img_dir = os.path.join(args.output, "image_frames")
