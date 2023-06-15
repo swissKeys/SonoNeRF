@@ -562,9 +562,6 @@ def create_nerf(args, autodecoder_variables=None, ignore_optimizer=False):
 
     grad_vars = []
 
-    if autodecoder_variables is not None:
-        grad_vars += autodecoder_variables
-
     embed_fn, input_ch = get_embedder(args.multires, args.i_embed)
 
     if args.ray_bending is not None and args.ray_bending != "None":
@@ -1219,6 +1216,10 @@ def config_parser():
         default=100,
         help="frequency of render_poses video saving",
     )
+    #CHANGED: for US reconstruction
+    parser.add_argument('--near_depth', type=int, default=0,  help='Start depth of the ultrasound sweep in mm.')
+    parser.add_argument('--far_depth', type=int,default=80, help='End depth of the ultrasound sweep in mm.')
+
 
     return parser
 
@@ -1272,6 +1273,52 @@ def _get_multi_view_helper_mappings(num_images, datadir):
     
   
 def get_full_resolution_intrinsics(args, dataset_extras):
+
+    intrinsics = {} # intrinsics[raw_view] = {"height": ..., "width": ...}
+
+    if dataset_extras["is_multiview"]: # multi-view
+        image_folder = "images"
+        import json
+        with open(os.path.join(args.datadir, "calibration_averaged_camera_view.json"), "r") as json_file:
+            calibration = json.load(json_file)
+
+        for raw_view in calibration.keys():
+            if raw_view in ["focal", "height", "width", "min_bound", "max_bound"]:
+                continue
+
+            camera = {
+                "height": calibration[raw_view]["height"],
+                "width": calibration[raw_view]["width"],
+                }
+
+            intrinsics[raw_view] = camera
+
+    else: # monocular
+        def _get_info(image_folder):
+            imgdir = os.path.join(args.datadir, image_folder)
+            imgnames = [f for f in sorted(os.listdir(imgdir)) if f.endswith('JPG') or f.endswith('jpg') or f.endswith('png')]
+            imgfiles = [os.path.join(imgdir, f) for f in imgnames]
+            def imread(f):
+                return cv2.imread(f)
+            img = imread(imgfiles[0])
+            height, width, _ = img.shape
+            return imgfiles, height, width
+
+        image_folder = "images"
+        imgfiles, height, width = _get_info(image_folder)
+
+        # duplicate to all images
+        one_camera = {"height": height, "width": width}
+        raw_views = np.arange(len(imgfiles))
+        for raw_view in raw_views:
+            intrinsics[raw_view] = one_camera.copy()
+
+    # take care of common values
+    for camera in intrinsics.values():
+        camera["ray_bending_latent_size"] = args.ray_bending_latent_size
+
+    return intrinsics, image_folder
+
 
     intrinsics = {} # intrinsics[raw_view] = {"center_x": ..., "center_y": ..., "focal_x": ..., "focaly_y": ..., "height": ..., "width": ...}
 
@@ -1351,26 +1398,18 @@ def main_function(args):
         dataset_extras = _get_multi_view_helper_mappings(images.shape[0], args.datadir)
         intrinsics, image_folder = get_full_resolution_intrinsics(args, dataset_extras)
         
+        
         hwf = poses[0, :3, -1]
         poses = poses[:, :3, :4]
         print("Loaded llff", images.shape, render_poses.shape, hwf, args.datadir)
 
-        # check if height, width, focal_x and focal_y are None. if so, use hwf to set them in intrinsics
-        # do not use this for loop and the next in smallscripts. instead rely on the stored/saved version of "intrinsics"
-        for camera in intrinsics.values(): # downscale according to args.factor
+        # Check if height and width are None. If so, set them from the image shape.
+        # Do not use this for loop and the next in smallscripts. Instead, rely on the stored/saved version of "intrinsics".
+        for camera in intrinsics.values():
             camera["height"] = images.shape[1]
             camera["width"] = images.shape[2]
-            if camera["focal_x"] is None:
-                camera["focal_x"] = hwf[2]
-            else:
-                camera["focal_x"] /= args.factor
-            if camera["focal_y"] is None:
-                camera["focal_y"] = hwf[2]
-            else:
-                camera["focal_y"] /= args.factor
-            camera["center_x"] /= args.factor
-            camera["center_y"] /= args.factor
-        # modify "intrinsics" mapping to use viewid instead of raw_view
+
+        # Modify "intrinsics" mapping to use viewid instead of raw_view.
         for raw_view in list(intrinsics.keys()):
             viewid = dataset_extras["rawview_to_viewid"][raw_view]
             new_entry = intrinsics[raw_view]
@@ -1419,14 +1458,10 @@ def main_function(args):
                 if (i not in i_test and i not in i_val)
             ]
         )
-
+        #CHANGED: Because of cross section character of sweep
         print("DEFINING BOUNDS")
-        # if args.no_ndc:
-        near = np.ndarray.min(bds) * 0.9
-        far = np.ndarray.max(bds) * 1.0
-        # else:
-        #    near = 0.
-        #    far = 1.
+        near = args.near_depth
+        far = args.far_depth
         print("NEAR FAR", near, far)
 
     else:
@@ -1451,17 +1486,15 @@ def main_function(args):
             file.write(open(args.config, "r").read())
 
     # create autodecoder variables as pytorch tensors
-    ray_bending_latents_list = [
-        torch.zeros(args.ray_bending_latent_size).cuda()
-        for _ in range(len(dataset_extras["raw_timesteps"]))
-    ]
-    for latent in ray_bending_latents_list:
-        latent.requires_grad = True
-
+        """     ray_bending_latents_list = [
+                torch.zeros(args.ray_bending_latent_size).cuda()
+                for _ in range(len(dataset_extras["raw_timesteps"]))
+            ]
+            for latent in ray_bending_latents_list:
+                latent.requires_grad = True
+        """
     # Create nerf model
-    render_kwargs_train, render_kwargs_test, start, grad_vars, optimizer = create_nerf(
-        args, autodecoder_variables=ray_bending_latents_list
-    )
+    render_kwargs_train, render_kwargs_test, start, grad_vars, optimizer = create_nerf(args)
     print("start: " + str(start) + " args.N_iters: " + str(args.N_iters), flush=True)
 
     global_step = start
