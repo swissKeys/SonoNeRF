@@ -135,19 +135,15 @@ def batchify_rays(
 
     all_ret = {k: torch.cat(all_ret[k], 0) for k in all_ret}
     return all_ret
-
-
+#CHANGED: 
 class training_wrapper_class(torch.nn.Module):
-    def __init__(self, coarse_model, latents, fine_model=None, ray_bender=None):
+    def __init__(self, coarse_model, fine_model=None):
 
         super(training_wrapper_class, self).__init__()
 
         # necessary to duplicate weights correctly across gpus. hacky workaround
         self.coarse_model = coarse_model
-        self.latents = latents
         self.fine_model = fine_model
-        self.ray_bender = ray_bender
-        # self.rgb_mask = nn.Parameter(rgb_mask) # not actual parameters, just a hacky workaround.
 
     def forward(
         self,
@@ -164,32 +160,9 @@ class training_wrapper_class(torch.nn.Module):
     ):
 
         # necessary to duplicate weights correctly across gpus. hacky workaround
-        self.coarse_model.ray_bender = (self.ray_bender,)
         render_kwargs_train["network_fn"] = self.coarse_model
-        render_kwargs_train["ray_bender"] = self.ray_bender
         if self.fine_model is not None:
-            self.fine_model.ray_bender = (self.ray_bender,)
             render_kwargs_train["network_fine"] = self.fine_model
-        ray_bending_latents_list = self.latents
-
-        ray_bending_latents_list = torch.stack(ray_bending_latents_list, dim=0).to(
-            target_s.get_device()
-        )  # num_latents x latent_size
-        imageid_to_timestepid = torch.tensor(
-            dataset_extras["imageid_to_timestepid"]
-        )  # num_images
-
-        N_rays = rays_o.shape[0]
-
-        # look up additional information (autodecoder per-image ray bending latent code)
-        # need to add this information dynamically here with indexing because otherwise values are not refreshed properly (e.g. if latent codes are concatenated to rays only once at the very start of training)
-        additional_pixel_information = {}
-        device = imageid_to_timestepid.device
-        batch_pixel_indices = batch_pixel_indices.to(device)
-        imageid_to_timestepid = imageid_to_timestepid.to(device)
-        additional_pixel_information["ray_bending_latents"] = ray_bending_latents_list[
-            imageid_to_timestepid[batch_pixel_indices[:, 0]], :
-        ]  # shape: samples x latent_size
 
         # regularizers setup
         if args.offsets_loss_weight > 0.0 or args.divergence_loss_weight > 0.0:
@@ -203,90 +176,20 @@ class training_wrapper_class(torch.nn.Module):
             chunk=args.chunk,
             verbose=i < 10,
             retraw=True,
-            additional_pixel_information=additional_pixel_information,
             detailed_output=detailed_output,
             **render_kwargs_train,
         )  # rays need to be split for parallel call
 
         # data loss
-        img_loss = img2mse(rgb, target_s, N_rays)
-        trans = extras["raw"][..., -1]
+        img_loss = img2mse(rgb, target_s, rays_o.shape[0])
         loss = img_loss  # shape: N_rays
         psnr = mse2psnr(img_loss)
 
         if "rgb0" in extras:
-            img_loss0 = img2mse(extras["rgb0"], target_s, N_rays)
+            img_loss0 = img2mse(extras["rgb0"], target_s, rays_o.shape[0])
             loss = loss + img_loss0
             psnr0 = mse2psnr(img_loss0)
 
-        # offsets loss
-        if self.ray_bender is not None and args.offsets_loss_weight > 0.0:
-            offsets = extras["unmasked_offsets"].view(-1, 3)
-            weights = extras["visibility_weights"].detach().view(-1)
-            # reshape to N_rays x samples and take mean across samples to get shape (N_rays,)         
-            offsets_loss = torch.mean(
-                (weights * torch.pow(
-                    torch.norm(extras["unmasked_offsets"].view(-1, 3), dim=-1), 
-                    2. - extras["rigidity_mask"].view(-1))
-                ).view(N_rays,-1), 
-                dim=-1
-            ) # shape: N_rays. L1 loss. "offsets" includes only coarse samples            
-            #offsets_loss = torch.mean(
-            #    (weights * torch.norm(offsets, dim=-1)).view(N_rays, -1), dim=-1
-            #)  # shape: N_rays. L1 loss. "offsets" includes only coarse samples
-            offsets_loss += args.rigidity_loss_weight * torch.mean(
-                (weights * extras["rigidity_mask"].view(-1)).view(N_rays, -1), dim=-1
-            )
-            loss = (
-                loss
-                + args.offsets_loss_weight
-                * ((1.0 / 100.0) ** (1 - (global_step / args.N_iters)))
-                * offsets_loss
-            )  # increasing schedule
-
-        # divergence loss
-        if self.ray_bender is not None and args.divergence_loss_weight > 0.0:
-            exact_divergence = False
-            backprop_into_weights = False
-            initial_input_pts = extras["initial_input_pts"].view(
-                -1, 3
-            )  # num_rays * N_samples x 3
-            if "masked_offsets" in extras:
-                offsets = extras["masked_offsets"]
-            else:
-                offsets = extras["unmasked_offsets"]
-            offsets = offsets.view(-1, 3)
-            weights = extras["opacity_alpha"].view(-1)
-            divergence_latents = additional_pixel_information[
-                "ray_bending_latents"
-            ]  # num_rays x latent_size
-            num_rays = divergence_latents.shape[0]
-            divergence_latents = (
-                divergence_latents.view(num_rays, 1, -1)
-                .expand((num_rays, args.N_samples, args.ray_bending_latent_size))
-                .reshape(-1, args.ray_bending_latent_size)
-            )  # num_rays * N_samples x latent_size
-
-            weights = 1.0 - torch.exp(-F.relu(weights))
-
-            # compute_divergence_loss
-            divergence_loss = compute_divergence_loss(
-                offsets,
-                initial_input_pts,
-                divergence_latents,
-                render_kwargs_train["ray_bender"],
-                exact=exact_divergence,
-                chunk=args.chunk,
-                N_rays=N_rays,
-                weights=weights,
-                backprop_into_weights=backprop_into_weights,
-            )
-            loss = (
-                loss
-                + args.divergence_loss_weight
-                * ((1.0 / 100.0) ** (1 - (global_step / args.N_iters)))
-                * divergence_loss
-            )  # increasing schedule
         return loss
 
 
@@ -1482,7 +1385,7 @@ def main_function(args):
         coarse_model=coarse_model, fine_model=fine_model, ray_bender=ray_bender
     )  # only used by render_path() at test time, not for training/optimization
 
-    #TODO: here...
+    #CHANGED: get rays()
     min_point, max_point = determine_nerf_volume_extent(
         parallel_render, poses, [ intrinsics[dataset_extras["imageid_to_viewid"][imageid]] for imageid in range(poses.shape[0]) ], render_kwargs_train, args
     )
@@ -1490,6 +1393,7 @@ def main_function(args):
     scripts_dict["max_nerf_volume_point"] = max_point.detach().cpu().numpy().tolist()
 
     # Move testing data to GPU
+    #TODO: conitnue check if rende rposes make sense in the end?
     render_poses = torch.Tensor(render_poses).cuda()
 
     # Prepare raybatch tensor if batching random rays
@@ -1498,7 +1402,7 @@ def main_function(args):
     print("get rays")
     rays = np.stack([get_rays_np(p, intrinsics[dataset_extras["imageid_to_viewid"][imageid]]) for imageid, p in enumerate(poses[:,:3,:4])], 0) # [N, ro+rd, H, W, 3]
     print("done, concats")
-
+     #TODO: conitnue here
     # attach index information (index among all images in dataset, x and y coordinate)
     image_indices, y_coordinates, x_coordinates = np.meshgrid(
         np.arange(images.shape[0]), np.arange(intrinsics[0]["height"]), np.arange(intrinsics[0]["width"]), indexing="ij"

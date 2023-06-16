@@ -477,41 +477,41 @@ class ray_bending(nn.Module):
             )  # apply positional encoding. num_points x input_ch
 
 
-# Ray helpers
-def get_rays(c2w, intrin):
-    H = intrin["height"]
-    W = intrin["width"]
+# CHANGED: Ray helpers
+def get_ultrasound_rays(c2w, intrin):
+    H = intrin["height"]  # This represents the height of the 2D ultrasound sweep
+    W = intrin["width"]   # This represents the width of the 2D ultrasound sweep
     device = c2w.get_device()
-    i, j = torch.meshgrid(torch.linspace(0, W-1, W, device=device), torch.linspace(0, H-1, H, device=device))  # pytorch's meshgrid has indexing='ij' # keep consistent with meshgrid run_nerf.py
+    i, j = torch.meshgrid(torch.linspace(0, W-1, W, device=device), torch.linspace(0, H-1, H, device=device)) 
     i = i.t()
     j = j.t()
-    focal_x = intrin["focal_x"]
-    focal_y = intrin["focal_y"]
-    center_x = intrin["center_x"]
-    center_y = intrin["center_y"]
-    dirs = torch.stack([(i-center_x)/focal_x, -(j-center_y)/focal_y, -torch.ones_like(i, device=device)], -1) # axes orientations (?): x right, y upwards, z negative
-    #dirs = torch.stack([(i-W*.5)/focal_x, -(j-H*.5)/focal_y, -torch.ones_like(i)], -1) # axes orientations (?): x right, y upwards, z negative
-    # Rotate ray directions from camera frame to the world frame
-    rays_d = torch.sum(dirs[..., np.newaxis, :] * c2w[:3,:3], -1)  # dot product, equals to: [c2w.dot(dir) for dir in dirs]
-    # Translate camera frame's origin to the world frame. It is the origin of all rays.
-    rays_o = c2w[:3,-1].expand(rays_d.shape)
+
+    # In the context of ultrasound, rays will originate from each point on the ultrasound sweep
+    # The ray's origin, rays_o, is computed using the c2w matrix, which represents the 3D position and orientation of the ultrasound transducer. 
+    # Instead of having a single origin point, each point on the ultrasound sweep (i,j) will have its own origin.
+    rays_o = c2w[:3,:3] @ torch.stack([i, j, torch.ones_like(i)], -1) + c2w[:3,-1][:,None,None]
+
+    # The ray's direction, rays_d, is the same for all rays, and it's a constant vector [0, 0, 1] in the ultrasound transducer's coordinates (assuming the sweep plane is the xy-plane). 
+    # We need to rotate this direction vector from the ultrasound transducer's coordinate system to the world coordinates, using the c2w rotation matrix.
+    rays_d = (c2w[:3,:3] @ torch.tensor([0, 0, 1], device=device)[:,None,None]).expand(rays_o.shape)
+
     return rays_o, rays_d
 
 
 def get_rays_np(c2w, intrin):
-    H = intrin["height"]
-    W = intrin["width"]
-    i, j = np.meshgrid(np.arange(W, dtype=np.float32), np.arange(H, dtype=np.float32), indexing='xy') # keep consistent with meshgrid run_nerf.py
-    focal_x = intrin["focal_x"]
-    focal_y = intrin["focal_y"]
-    center_x = intrin["center_x"]
-    center_y = intrin["center_y"]
-    dirs = np.stack([(i-center_x)/focal_x, -(j-center_y)/focal_y, -np.ones_like(i)], -1)
-    #dirs = np.stack([(i-W*.5)/focal_x, -(j-H*.5)/focal_y, -np.ones_like(i)], -1)
-    # Rotate ray directions from camera frame to the world frame
-    rays_d = np.sum(dirs[..., np.newaxis, :] * c2w[:3,:3], -1)  # dot product, equals to: [c2w.dot(dir) for dir in dirs]
-    # Translate camera frame's origin to the world frame. It is the origin of all rays.
-    rays_o = np.broadcast_to(c2w[:3,-1], np.shape(rays_d))
+    H = intrin["height"]  # This represents the height of the 2D ultrasound sweep
+    W = intrin["width"]   # This represents the width of the 2D ultrasound sweep
+    i, j = np.meshgrid(np.linspace(0, W-1, W), np.linspace(0, H-1, H), indexing='ij')
+
+    # In the context of ultrasound, rays will originate from each point on the ultrasound sweep
+    # The ray's origin, rays_o, is computed using the c2w matrix, which represents the 3D position and orientation of the ultrasound transducer. 
+    # Instead of having a single origin point, each point on the ultrasound sweep (i,j) will have its own origin.
+    rays_o = np.einsum('ij,klj->kli', c2w[:3,:3], np.stack([i, j, np.ones_like(i)], -1)) + c2w[:3,-1][None, None]
+
+    # The ray's direction, rays_d, is the same for all rays, and it's a constant vector [0, 0, 1] in the ultrasound transducer's coordinates (assuming the sweep plane is the xy-plane). 
+    # We need to rotate this direction vector from the ultrasound transducer's coordinate system to the world coordinates, using the c2w rotation matrix.
+    rays_d = np.einsum('ij,k->jk', c2w[:3,:3], np.array([0, 0, 1]))[None, None].repeat(rays_o.shape[0], axis=0).repeat(rays_o.shape[1], axis=1)
+
     return rays_o, rays_d
 
 
@@ -817,7 +817,7 @@ def determine_nerf_volume_extent(
     critical_rays_d = []
     for c2w, intrin in zip(poses, intrinsics): 
         this_c2w = c2w[:3, :4]
-        rays_o, rays_d = get_rays(this_c2w, intrin)
+        rays_o, rays_d = get_ultrasound_rays(this_c2w, intrin)
         camera_corners_o = torch.stack(
             [rays_o[0, 0, :], rays_o[-1, 0, :], rays_o[0, -1, :], rays_o[-1, -1, :]]
         )  # 4x3
