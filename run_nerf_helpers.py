@@ -489,7 +489,7 @@ def get_ultrasound_rays(c2w, intrin):
     # In the context of ultrasound, rays will originate from each point on the ultrasound sweep
     # The ray's origin, rays_o, is computed using the c2w matrix, which represents the 3D position and orientation of the ultrasound transducer. 
     # Instead of having a single origin point, each point on the ultrasound sweep (i,j) will have its own origin.
-    rays_o = c2w[:3,:3] @ torch.stack([i, j, torch.ones_like(i)], -1) + c2w[:3,-1][:,None,None]
+    rays_o = (c2w[:3,:3][None,None] @ torch.stack([i, j, torch.ones_like(i)], -1).permute(2,0,1)) + c2w[:3,-1][:,None,None]
 
     # The ray's direction, rays_d, is the same for all rays, and it's a constant vector [0, 0, 1] in the ultrasound transducer's coordinates (assuming the sweep plane is the xy-plane). 
     # We need to rotate this direction vector from the ultrasound transducer's coordinate system to the world coordinates, using the c2w rotation matrix.

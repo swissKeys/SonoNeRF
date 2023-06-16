@@ -1400,7 +1400,7 @@ def main_function(args):
     print("get rays")
     rays = np.stack([get_rays_np(p, intrinsics[dataset_extras["imageid_to_viewid"][imageid]]) for imageid, p in enumerate(poses[:,:3,:4])], 0) # [N, ro+rd, H, W, 3]
     print("done, concats")
-     #TODO: conitnue here
+    
     # attach index information (index among all images in dataset, x and y coordinate)
     image_indices, y_coordinates, x_coordinates = np.meshgrid(
         np.arange(images.shape[0]), np.arange(intrinsics[0]["height"]), np.arange(intrinsics[0]["width"]), indexing="ij"
