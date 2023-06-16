@@ -152,11 +152,11 @@ class Embedder:
 
 def get_embedder(multires, i=0):
     if i == -1:
-        return nn.Identity(), 3
+        return nn.Identity(), 2  # Changed from 3 to 2
 
     embed_kwargs = {
-        "include_input": True,  # needs to be True for ray_bending to work properly
-        "input_dims": 3,
+        "include_input": True,
+        "input_dims": 2,  # Changed from 3 to 2 to match the new input dimensions
         "max_freq_log2": multires - 1,
         "num_freqs": multires,
         "log_sampling": True,
@@ -174,7 +174,7 @@ class NeRF(nn.Module):
         self,
         D=8,
         W=256,
-        input_ch=3,
+        input_ch=2,
         input_ch_views=3,
         output_ch=4,
         skips=[4],
@@ -193,7 +193,7 @@ class NeRF(nn.Module):
         self.input_ch = input_ch
         self.input_ch_views = input_ch_views
         self.skips = skips
-        self.use_viewdirs = use_viewdirs
+        self.use_viewdirs = False
 
         # nonrigid view dependence
         self.approx_nonrigid_viewdirs = approx_nonrigid_viewdirs  # approx uses finite differences, while exact uses three additional passes through ray bending in the forward pass
@@ -216,148 +216,41 @@ class NeRF(nn.Module):
 
         # network layers
         self.pts_linears = nn.ModuleList(
-            [nn.Linear(input_ch, W)]
+            [nn.Linear(self.input_ch, W)]  # note the change here
             + [
-                nn.Linear(W, W) if i not in self.skips else nn.Linear(W + input_ch, W)
+                nn.Linear(W, W) if i not in self.skips else nn.Linear(W + self.input_ch, W)
                 for i in range(D - 1)
             ]
         )
 
-        ### Implementation according to the official code release (https://github.com/bmild/nerf/blob/master/run_nerf_helpers.py#L104-L105)
-        self.views_linears = nn.ModuleList([nn.Linear(input_ch_views + W, W // 2)])
 
-        ### Implementation according to the NeRF paper
-        # self.views_linears = nn.ModuleList(
-        #     [nn.Linear(input_ch_views + W, W//2)] + [nn.Linear(W//2, W//2) for i in range(D//2)])
+        # No need for views_linears since we're not using viewdirs
+        self.views_linears = None
 
-        if use_viewdirs:
-            self.feature_linear = nn.Linear(W, W)
-            self.alpha_linear = nn.Linear(W, 1)
-            self.rgb_linear = nn.Linear(W // 2, 3)
-        else:
-            self.output_linear = nn.Linear(W, output_ch)
+        # Regardless of whether use_viewdirs is True, we only need one output_linear
+        self.output_linear = nn.Linear(W, output_ch)
 
-    def forward(self, x, detailed_output=False):
-
-        input_pts, input_views, input_latents = torch.split(
+    def forward(self, x):
+        # Split the input into its components
+        input_pts, = torch.split(
             x,
-            [self.input_ch, self.input_ch_views, self.ray_bending_latent_size],
+            [self.input_ch],
             dim=-1,
         )
 
-        if detailed_output:
-            details = {}
-            details["initial_input_pts"] = (
-                input_pts[:, :3].clone().detach()
-            )  # only keep xyz (embedding/positional encoding has raw xyz as the first three entries)
-        else:
-            details = None
-        if self.ray_bender[0] is not None:
-            if self.use_viewdirs and not self.approx_nonrigid_viewdirs:
-                if self.ray_bender[0].use_positionally_encoded_input:
-                    raise RuntimeError("not supported")
-                with torch.enable_grad():  # necessay to work properly in no_grad() mode
-                    initial_input_pts = input_pts[:, :3]
-                    if not initial_input_pts.requires_grad:
-                        initial_input_pts.requires_grad = True  # only do this when the overall rendering is running in no_grad() mode
-                    input_pts = self.ray_bender[0](
-                        initial_input_pts, input_latents, details
-                    )
-                    bent_input_pts = input_pts[:, :3]
-            else:
-                input_pts = self.ray_bender[0](input_pts, input_latents, details)
-        if detailed_output:
-            details["input_pts"] = input_pts[:, :3].clone().detach()
-
+        # Propagate the input points through the main network layers
         h = input_pts
-        if self.time_conditioned_baseline:
-            h = torch.cat([h, input_latents], -1)
         for i, l in enumerate(self.pts_linears):
             h = self.pts_linears[i](h)
             h = F.relu(h)
             if i in self.skips:
-                if self.time_conditioned_baseline:
-                    h = torch.cat([input_pts, input_latents, h], -1)
-                else:
-                    h = torch.cat([input_pts, h], -1)
+                h = torch.cat([input_pts, h], -1)
 
-        if self.use_viewdirs:
-            alpha = self.alpha_linear(h)
-            feature = self.feature_linear(h)
+        # Run the result through the output layer to produce the final output
+        outputs = self.output_linear(h)
 
-            if self.ray_bender[0] is not None:
-                if self.approx_nonrigid_viewdirs:
-                    input_views = self.viewdirs_via_finite_differences(input_pts[:, :3])
-                else:
-                    input_views = self.exact_nonrigid_viewdirs(
-                        initial_input_pts, bent_input_pts, input_views[:, :3]
-                    )
+        return outputs
 
-            h = torch.cat([feature, input_views], -1)
-            layers = self.views_linears
-
-            for i, l in enumerate(layers):
-                h = layers[i](h)
-                h = F.relu(h)
-
-            rgb = self.rgb_linear(h)
-            outputs = torch.cat([rgb, alpha], -1)
-        else:
-            outputs = self.output_linear(h)
-
-        if detailed_output:
-            if self.test_time_nonrigid_object_removal_threshold is not None:
-                outputs[ details["rigidity_mask"].flatten() >= self.test_time_nonrigid_object_removal_threshold , 3] *= 0. # make nonrigid objects invisible
-                #outputs[ details["rigidity_mask"].flatten() <= self.test_time_nonrigid_object_removal_threshold , 3] *= 0. # make rigid objects invisible
-            return outputs, details
-        else:
-            return outputs
-
-    def viewdirs_via_finite_differences(self, input_pts):
-        # input_pts: N x 3
-
-        eps = 0.000001
-        input_pts = input_pts.view(-1, self.num_ray_samples, 3)  # rays x samples x 3
-        difference_type = "backward"
-        if difference_type == "central":
-            # central differences (except for first and last sample since one neighbor is missing for them)
-            unnormalized_central_differences = (
-                input_pts[:, 2:, :] - input_pts[:, :-2, :]
-            )  # rays x (samples-2) x 3
-            central_differences = unnormalized_central_differences / (
-                torch.norm(unnormalized_central_differences, dim=-1, keepdim=True) + eps
-            )
-            # fill in first and last sample by duplicating neighboring direction
-            input_views = torch.cat(
-                [
-                    central_differences[:, 0, :].view(-1, 1, 3),
-                    central_differences,
-                    central_differences[:, -1, :].view(-1, 1, 3),
-                ],
-                axis=1,
-            )  # rays x samples x 3
-        elif difference_type == "backward":
-            unnormalized_backward_differences = (
-                input_pts[:, 1:, :] - input_pts[:, :-1, :]
-            )  # rays x (samples-1) x 3. 0-th sample has no direction.
-            backward_differences = unnormalized_backward_differences / (
-                torch.norm(unnormalized_backward_differences, dim=-1, keepdim=True)
-                + eps
-            )
-            # fill in first sample by duplicating neighboring direction
-            input_views = torch.cat(
-                [backward_differences[:, 0, :].view(-1, 1, 3), backward_differences],
-                axis=1,
-            )  # rays x samples x 3
-
-        input_views = input_views.view(-1, 3)  # rays * samples x 3
-        input_views = self.embeddirs_fn(input_views)  # rays * samples x input_ch_views
-
-        return input_views
-
-    def exact_nonrigid_viewdirs(
-        self, initial_input_pts, bent_input_pts, unbent_ray_direction
-    ):
 
         # compute Jacobian
         with torch.enable_grad():  # necessay to work properly in no_grad() mode

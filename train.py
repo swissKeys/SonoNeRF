@@ -69,11 +69,12 @@ def run_network(
     )  # N_rays * N_samples_per_ray x 3
     embedded = embed_fn(inputs_flat)
 
-    if viewdirs is not None:
-        input_dirs = viewdirs[:, None].expand(inputs.shape)
-        input_dirs_flat = torch.reshape(input_dirs, [-1, input_dirs.shape[-1]])
-        embedded_dirs = embeddirs_fn(input_dirs_flat)
-        embedded = torch.cat([embedded, embedded_dirs], -1)
+    # We no longer use view directions, so this part can be skipped
+    # if viewdirs is not None:
+    #     input_dirs = viewdirs[:, None].expand(inputs.shape)
+    #     input_dirs_flat = torch.reshape(input_dirs, [-1, input_dirs.shape[-1]])
+    #     embedded_dirs = embeddirs_fn(input_dirs_flat)
+    #     embedded = torch.cat([embedded, embedded_dirs], -1)
 
     ray_bending_latents = additional_pixel_information[
         "ray_bending_latents"
@@ -86,7 +87,7 @@ def run_network(
     )  # N_rays * N_samples_per_ray x latent_size
     embedded = torch.cat(
         [embedded, ray_bending_latents], -1
-    )  # N_rays * N_samples_per_ray x (embedded position + embedded viewdirection + latent code)
+    )  # N_rays * N_samples_per_ray x (embedded position + latent code)
 
     outputs_flat = batchify(fn, netchunk, detailed_output)(
         embedded
@@ -290,11 +291,11 @@ class training_wrapper_class(torch.nn.Module):
 
 
 def get_parallelized_training_function(
-    coarse_model, latents, fine_model=None, ray_bender=None
+    coarse_model, fine_model=None, ray_bender=None
 ):
     return torch.nn.DataParallel(
         training_wrapper_class(
-            coarse_model, latents, fine_model=fine_model, ray_bender=ray_bender
+            coarse_model, fine_model=fine_model, ray_bender=ray_bender
         )
     )
 
@@ -557,40 +558,20 @@ def render_path(
         return rgbs, disps
 
 
-def create_nerf(args, autodecoder_variables=None, ignore_optimizer=False):
+def create_nerf(args):
     """Instantiate NeRF's MLP model."""
 
     grad_vars = []
-
+    # CHANGED: 2D cooridate of each pixel along our 1xH ray
     embed_fn, input_ch = get_embedder(args.multires, args.i_embed)
 
-    if args.ray_bending is not None and args.ray_bending != "None":
-        ray_bender = ray_bending(
-            input_ch, args.ray_bending_latent_size, args.ray_bending, embed_fn
-        ).cuda()
-        grad_vars += list(ray_bender.parameters())
-    else:
-        ray_bender = None
+    ray_bender = None
         
-    if args.time_conditioned_baseline:
-        if args.ray_bending == "simple_neural":
-            raise RuntimeError("Naive Baseline requires to turn off ray bending")
-        if args.offsets_loss_weight > 0. or args.divergence_loss_weight > 0. or args.rigidity_loss_weight > 0.:
-            raise RuntimeError("Naive Baseline requires to turn off regularization losses since they only work with ray bending")
+    args.use_viewdirs = False  # Disabling the use_viewdirs flag
 
-    input_ch_views = 0
-    embeddirs_fn = None
-    if args.use_viewdirs:
-        embeddirs_fn, input_ch_views = get_embedder(args.multires_views, args.i_embed)
-        if args.approx_nonrigid_viewdirs:
-            # netchunk needs to be divisible by both number of samples of coarse and fine Nerfs
-            def lcm(x, y):
-                from math import gcd
+    input_ch_views = 0  # Set the input channel size of the viewing directions to zero
+    embeddirs_fn = None  # The function used to embed the viewing directions remains None
 
-                return x * y // gcd(x, y)
-
-            needs_to_divide = lcm(args.N_samples, args.N_samples + args.N_importance)
-            args.netchunk = int(args.netchunk / needs_to_divide) * needs_to_divide
     output_ch = 5 if args.N_importance > 0 else 4
     skips = [4]
     model = NeRF(
@@ -600,7 +581,7 @@ def create_nerf(args, autodecoder_variables=None, ignore_optimizer=False):
         output_ch=output_ch,
         skips=skips,
         input_ch_views=input_ch_views,
-        use_viewdirs=args.use_viewdirs,
+        use_viewdirs=False,
         ray_bender=ray_bender,
         ray_bending_latent_size=args.ray_bending_latent_size,
         embeddirs_fn=embeddirs_fn,
@@ -621,7 +602,7 @@ def create_nerf(args, autodecoder_variables=None, ignore_optimizer=False):
             output_ch=output_ch,
             skips=skips,
             input_ch_views=input_ch_views,
-            use_viewdirs=args.use_viewdirs,
+            use_viewdirs=False,
             ray_bender=ray_bender,
             ray_bending_latent_size=args.ray_bending_latent_size,
             embeddirs_fn=embeddirs_fn,
@@ -649,20 +630,14 @@ def create_nerf(args, autodecoder_variables=None, ignore_optimizer=False):
             detailed_output=detailed_output,
         )
 
-    # Create optimizer
-    # Note: needs to be Adam. otherwise need to check how to avoid wrong DeepSDF-style autodecoder optimization of the per-frame latent codes.
-    if ignore_optimizer:
-        optimizer = None
-    else:
-        optimizer = torch.optim.Adam(
-            params=grad_vars, lr=args.lrate, betas=(0.9, 0.999)
-        )
+        # Create optimizer
+    optimizer = torch.optim.Adam(
+        params=grad_vars, lr=args.lrate, betas=(0.9, 0.999)
+    )
 
     start = 0
     logdir = os.path.join(args.rootdir, args.expname, "logs/")
     expname = args.expname
-
-    ##########################
 
     # Load checkpoints
     if args.ft_path is not None and args.ft_path != "None":
@@ -679,8 +654,6 @@ def create_nerf(args, autodecoder_variables=None, ignore_optimizer=False):
         ckpt = torch.load(ckpt_path)
 
         start = ckpt["global_step"]
-        if not ignore_optimizer:
-            optimizer.load_state_dict(ckpt["optimizer_state_dict"])
 
         # Load model
         model.load_state_dict(ckpt["network_fn_state_dict"])
@@ -688,13 +661,6 @@ def create_nerf(args, autodecoder_variables=None, ignore_optimizer=False):
             model_fine.load_state_dict(ckpt["network_fine_state_dict"])
         if ray_bender is not None:
             ray_bender.load_state_dict(ckpt["ray_bender_state_dict"])
-        if autodecoder_variables is not None:
-            for latent, saved_latent in zip(
-                autodecoder_variables, ckpt["ray_bending_latent_codes"]
-            ):
-                latent.data[:] = saved_latent[:].detach().clone()
-
-    ##########################
 
     render_kwargs_train = {
         "network_query_fn": network_query_fn,
@@ -704,14 +670,11 @@ def create_nerf(args, autodecoder_variables=None, ignore_optimizer=False):
         "N_samples": args.N_samples,
         "network_fn": model,
         "ray_bender": ray_bender,
-        "use_viewdirs": args.use_viewdirs,
         "white_bkgd": False,
         "raw_noise_std": args.raw_noise_std,
     }
 
     # NDC only good for LLFF-style forward facing data
-    # if args.dataset_type != 'llff' or args.no_ndc:
-    #    print('Not ndc!')
     render_kwargs_train["ndc"] = False
     render_kwargs_train["lindisp"] = False
 
@@ -720,7 +683,6 @@ def create_nerf(args, autodecoder_variables=None, ignore_optimizer=False):
     render_kwargs_test["raw_noise_std"] = 0.0
 
     return render_kwargs_train, render_kwargs_test, start, grad_vars, optimizer
-
 
 def raw2outputs(raw, z_vals, rays_d, raw_noise_std=0, white_bkgd=False, pytest=False):
     """Transforms model's predictions to semantically meaningful values.
@@ -1513,7 +1475,6 @@ def main_function(args):
     ray_bender = render_kwargs_train["ray_bender"]
     parallel_training = get_parallelized_training_function(
         coarse_model=coarse_model,
-        latents=ray_bending_latents_list,
         fine_model=fine_model,
         ray_bender=ray_bender,
     )
@@ -1521,6 +1482,7 @@ def main_function(args):
         coarse_model=coarse_model, fine_model=fine_model, ray_bender=ray_bender
     )  # only used by render_path() at test time, not for training/optimization
 
+    #TODO: here...
     min_point, max_point = determine_nerf_volume_extent(
         parallel_render, poses, [ intrinsics[dataset_extras["imageid_to_viewid"][imageid]] for imageid in range(poses.shape[0]) ], render_kwargs_train, args
     )
