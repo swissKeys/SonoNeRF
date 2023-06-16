@@ -198,7 +198,7 @@ def get_parallelized_training_function(
 ):
     return torch.nn.DataParallel(
         training_wrapper_class(
-            coarse_model, fine_model=fine_models
+            coarse_model, fine_model=fine_model
         )
     )
 
