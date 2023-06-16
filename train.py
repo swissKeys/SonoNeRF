@@ -194,11 +194,11 @@ class training_wrapper_class(torch.nn.Module):
 
 
 def get_parallelized_training_function(
-    coarse_model, fine_model=None, ray_bender=None
+    coarse_model, fine_model=None
 ):
     return torch.nn.DataParallel(
         training_wrapper_class(
-            coarse_model, fine_model=fine_model, ray_bender=ray_bender
+            coarse_model, fine_model=fine_models
         )
     )
 
@@ -1375,14 +1375,12 @@ def main_function(args):
 
     coarse_model = render_kwargs_train["network_fn"]
     fine_model = render_kwargs_train["network_fine"]
-    ray_bender = render_kwargs_train["ray_bender"]
     parallel_training = get_parallelized_training_function(
         coarse_model=coarse_model,
         fine_model=fine_model,
-        ray_bender=ray_bender,
     )
     parallel_render = get_parallelized_render_function(
-        coarse_model=coarse_model, fine_model=fine_model, ray_bender=ray_bender
+        coarse_model=coarse_model, fine_model=fine_model
     )  # only used by render_path() at test time, not for training/optimization
 
     #CHANGED: get rays()
