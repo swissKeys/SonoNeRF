@@ -813,9 +813,12 @@ def determine_nerf_volume_extent(
 ):
     # the nerf volume has some extent, but this extent is not fixed. this function computes (somewhat approximate) minimum and maximum coordinates along each axis. it considers all cameras (their positions and point samples along the rays of their corners).
     poses = torch.Tensor(poses).cuda()
+    print("poses shape", poses.shape)
     critical_rays_o = []
     critical_rays_d = []
     for c2w, intrin in zip(poses, intrinsics): 
+        print(c2w.shape)
+        print(c2w)
         this_c2w = c2w[:3, :4]
         rays_o, rays_d = get_ultrasound_rays(this_c2w, intrin)
         camera_corners_o = torch.stack(
