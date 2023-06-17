@@ -479,22 +479,25 @@ class ray_bending(nn.Module):
 
 # CHANGED: Ray helpers
 def get_ultrasound_rays(c2w, intrin):
-    H = intrin["height"]  # This represents the height of the 2D ultrasound sweep
-    W = intrin["width"]   # This represents the width of the 2D ultrasound sweep
+    H = intrin["height"]
+    W = intrin["width"]
+    print(H)
+    print(W)
     device = c2w.get_device()
-    i, j = torch.meshgrid(torch.linspace(0, W-1, W, device=device), torch.linspace(0, H-1, H, device=device)) 
+    i, j = torch.meshgrid(torch.linspace(0, W-1, W, device=device), torch.linspace(0, H-1, H, device=device))  
     i = i.t()
     j = j.t()
+    c2w_rot = c2w[:3, :3] 
+    pixel_coords = torch.stack([i, j, torch.zeros_like(i)], dim=0)
 
-    # In the context of ultrasound, rays will originate from each point on the ultrasound sweep
-    # The ray's origin, rays_o, is computed using the c2w matrix, which represents the 3D position and orientation of the ultrasound transducer. 
-    # Instead of having a single origin point, each point on the ultrasound sweep (i,j) will have its own origin.
-    rays_o = (c2w[:3,:3][None,None] @ torch.stack([i, j, torch.ones_like(i)], -1).permute(2,0,1)) + c2w[:3,-1][:,None,None]
+    # Perform batch-wise matrix multiplication
+    rays_o = torch.einsum('ij,jkl->ikl', c2w_rot, pixel_coords)
 
-    # The ray's direction, rays_d, is the same for all rays, and it's a constant vector [0, 0, 1] in the ultrasound transducer's coordinates (assuming the sweep plane is the xy-plane). 
-    # We need to rotate this direction vector from the ultrasound transducer's coordinate system to the world coordinates, using the c2w rotation matrix.
-    rays_d = (c2w[:3,:3] @ torch.tensor([0, 0, 1], device=device)[:,None,None]).expand(rays_o.shape)
-
+    # Add translation
+    rays_o += c2w[:3, -1].unsqueeze(-1).unsqueeze(-1)
+    # Ray directions (a constant vector [0, 0, 1] in the camera's local space, rotated to the world space)
+    rays_d = c2w[:3, :3] @ torch.tensor([0, 0, 1], dtype=torch.float32, device=device)
+    rays_d = rays_d.unsqueeze(-1).unsqueeze(-1).expand(rays_o.shape)
     return rays_o, rays_d
 
 
