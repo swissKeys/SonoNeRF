@@ -304,7 +304,8 @@ def render(
     if use_viewdirs:
         rays = torch.cat([rays, viewdirs], -1)
 
-    # Render and reshape
+    # Render and reshape TODO find ERROR
+
     all_ret = batchify_rays(
         rays,
         additional_pixel_information,
