@@ -193,8 +193,8 @@ class ApplyModel:
             return R_est
         estimated_matrices = []
         for theta in results:
-            tx, ty, tz, ax, ay, az = theta[0]  # Use theta[0] instead of theta to extract values
-            R_est = create_rotation_matrix(ax, ay, az)  # You'll need to implement this function
+            tx, ty, tz, ax, ay, az = theta[0]  
+            R_est = create_rotation_matrix(ax, ay, az)
             T_est = np.array([tx, ty, tz]).reshape(3, 1)
             M_est = np.hstack((R_est, T_est))
             M_est = np.vstack((M_est, np.array([0, 0, 0, 1])))
