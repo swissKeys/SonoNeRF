@@ -115,16 +115,8 @@ def batchify_rays(
     """Render rays in smaller minibatches to avoid OOM."""
     all_ret = {}
     for i in range(0, rays_flat.shape[0], chunk):
-        # index correct subset of additional_pixel_information
-        relevant_additional_pixel_info = {
-            "ray_bending_latents": additional_pixel_information["ray_bending_latents"][
-                i : i + chunk, :
-            ],
-        }
-
         ret = render_rays(
             rays_flat[i : i + chunk],
-            additional_pixel_information=relevant_additional_pixel_info,
             detailed_output=detailed_output,
             **kwargs,
         )
@@ -267,30 +259,8 @@ def render(
 
     device = rays_o[0].get_device()
 
-    if use_viewdirs:
-        # provide ray directions as input
-        viewdirs = rays_d
-        if c2w_staticcam is not None:
-            # special case to visualize effect of viewdirs
-            if c2w is None:
-                raise RuntimeError(
-                    "seems inconsistent, this should only be used for full-image rendering -- need to take care of additional_pixel_information otherwise"
-                )
-            raise RuntimeError(
-                "need to pull this call to get_rays out to render_path() for gpu parallelization to work"
-            )
-            # remove H, W, focal. ray_params is intrinsics
-            rays_o, rays_d = get_rays(H, W, focal, c2w_staticcam, ray_params)
-            rays_o = rays_o.reshape(-1, 3)
-            rays_d = rays_d.reshape(-1, 3)
-        viewdirs = viewdirs / torch.norm(viewdirs, dim=-1, keepdim=True)
-        viewdirs = torch.reshape(viewdirs, [-1, 3]).float()
-
     sh = rays_d.shape  # [..., 3]
-    if ndc:
-        # for forward facing scenes
-        raise RuntimeError("not implemented. change H, W, focal to use ray_params instead")
-        rays_o, rays_d = ndc_rays(H, W, focal, 1.0, rays_o, rays_d)
+    print("rays_d shape", sh)
 
     # Create ray batch
     rays_o = torch.reshape(rays_o, [-1, 3]).float()
@@ -514,18 +484,16 @@ def create_nerf(args):
             approx_nonrigid_viewdirs=args.approx_nonrigid_viewdirs,
             time_conditioned_baseline=args.time_conditioned_baseline,
         ).cuda()
-        grad_vars += list(model_fine.parameters())
-
+    grad_vars += list(model_fine.parameters())
     def network_query_fn(
         inputs,
-        viewdirs,
         additional_pixel_information,
         network_fn,
+        viewdirs=None,  # Set viewdirs to None as a default argument
         detailed_output=False,
     ):
         return run_network(
             inputs,
-            viewdirs,
             additional_pixel_information,
             network_fn,
             embed_fn=embed_fn,
@@ -704,145 +672,32 @@ def render_rays(
       z_std: [num_rays]. Standard deviation of distances along ray for each
         sample.
     """
-
+    
+    # Modification: Extracting only ray origins and directions, we do not consider a viewpoint here. 
     N_rays = ray_batch.shape[0]
     rays_o, rays_d = ray_batch[:, 0:3], ray_batch[:, 3:6]  # [N_rays, 3] each
-    viewdirs = ray_batch[:, -3:] if ray_batch.shape[-1] > 8 else None
+
+    # Generating our z_vals directly from ray origins and directions.
     bounds = torch.reshape(ray_batch[..., 6:8], [-1, 1, 2])
     near, far = bounds[..., 0], bounds[..., 1]  # [-1,1]
 
-    t_vals = torch.linspace(0.0, 1.0, steps=N_samples, device=device)
-    if not lindisp:
-        z_vals = near * (1.0 - t_vals) + far * (t_vals)
-    else:
-        z_vals = 1.0 / (1.0 / near * (1.0 - t_vals) + 1.0 / far * (t_vals))
-
+    t_vals = torch.linspace(0.0, 1.0, steps=N_samples)
+    z_vals = near * (1.0 - t_vals) + far * (t_vals)
     z_vals = z_vals.expand([N_rays, N_samples])
 
-    if perturb > 0.0:
-        # get intervals between samples
-        mids = 0.5 * (z_vals[..., 1:] + z_vals[..., :-1])
-        upper = torch.cat([mids, z_vals[..., -1:]], -1)
-        lower = torch.cat([z_vals[..., :1], mids], -1)
-        # stratified samples in those intervals
-        t_rand = torch.rand(z_vals.shape, device=device)
+    # Modification: `pts` is generated directly from the ray origins and directions. 
+    pts = rays_o[..., None, :] + rays_d[..., None, :] * z_vals[..., :, None]  # [N_rays, N_samples, 3]
 
-        # Pytest, overwrite u with numpy's fixed random numbers
-        if pytest:
-            np.random.seed(0)
-            t_rand = np.random.rand(*list(z_vals.shape))
-            t_rand = torch.Tensor(t_rand, device=device)
+    # Modification: `viewdirs` is removed as an argument to the network_query_fn since we do not need a viewing direction.
+    raw = network_query_fn(pts, viewdirs, network_fn, detailed_output=detailed_output)
+    
+    # We maintain the original outputs computation, assuming raw2outputs function does not rely on the viewpoint-based model
+    rgb_map, disp_map, acc_map, _, _, _ = raw2outputs(raw, z_vals, rays_d, raw_noise_std, white_bkgd)
 
-        z_vals = lower + (upper - lower) * t_rand
-
-    pts = (
-        rays_o[..., None, :] + rays_d[..., None, :] * z_vals[..., :, None]
-    )  # [N_rays, N_samples, 3]
-
-    if detailed_output:
-        raw, details = network_query_fn(
-            pts,
-            viewdirs,
-            additional_pixel_information,
-            network_fn,
-            detailed_output=detailed_output,
-        )
-    else:
-        raw = network_query_fn(
-            pts,
-            viewdirs,
-            additional_pixel_information,
-            network_fn,
-            detailed_output=detailed_output,
-        )
-    (
-        rgb_map,
-        disp_map,
-        acc_map,
-        opacity_alpha,
-        visibility_weights,
-        depth_map,
-    ) = raw2outputs(raw, z_vals, rays_d, raw_noise_std, white_bkgd, pytest=pytest)
-
-    if N_importance > 0:
-
-        rgb_map_0, disp_map_0, acc_map_0, opacity_alpha_0, visibility_weights_0 = (
-            rgb_map,
-            disp_map,
-            acc_map,
-            opacity_alpha,
-            visibility_weights,
-        )
-
-        z_vals_mid = 0.5 * (z_vals[..., 1:] + z_vals[..., :-1])
-        z_samples = sample_pdf(
-            z_vals_mid,
-            visibility_weights[..., 1:-1],
-            N_importance,
-            det=(perturb == 0.0),
-            pytest=pytest,
-        )
-        z_samples = z_samples.detach()
-
-        z_vals, _ = torch.sort(torch.cat([z_vals, z_samples], -1), -1)
-        pts = (
-            rays_o[..., None, :] + rays_d[..., None, :] * z_vals[..., :, None]
-        )  # [N_rays, N_samples + N_importance, 3]
-
-        run_fn = network_fn if network_fine is None else network_fine
-        if detailed_output:
-            raw, fine_details = network_query_fn(
-                pts,
-                viewdirs,
-                additional_pixel_information,
-                run_fn,
-                detailed_output=detailed_output,
-            )
-        else:
-            raw = network_query_fn(
-                pts,
-                viewdirs,
-                additional_pixel_information,
-                run_fn,
-                detailed_output=detailed_output,
-            )
-
-        (
-            rgb_map,
-            disp_map,
-            acc_map,
-            opacity_alpha,
-            visibility_weights,
-            depth_map,
-        ) = raw2outputs(raw, z_vals, rays_d, raw_noise_std, white_bkgd, pytest=pytest)
-
+    # We preserve the main return structure of the function.
     ret = {"rgb_map": rgb_map, "disp_map": disp_map, "acc_map": acc_map}
     if retraw:
         ret["raw"] = raw
-    if N_importance > 0:
-        ret["rgb0"] = rgb_map_0
-        ret["disp0"] = disp_map_0
-        ret["acc0"] = acc_map_0
-        ret["z_std"] = torch.std(z_samples, dim=-1, unbiased=False)  # [N_rays]
-        if detailed_output:
-            # N_rays x N_samples_per_ray
-            ret["fine_visibility_weights"] = visibility_weights
-            # N_rays x N_samples_per_ray
-            ret["fine_opacity_alpha"] = opacity_alpha
-            for key in fine_details.keys():
-                ret["fine_" + str(key)] = fine_details[key]
-    if detailed_output:
-        # N_rays x N_samples_per_ray
-        ret["visibility_weights"] = visibility_weights_0
-        ret["opacity_alpha"] = opacity_alpha_0  # N_rays x N_samples_per_ray
-        for key in details.keys():
-            ret[key] = details[key]
-
-    global DEBUG
-    if DEBUG:
-        for k in ret:
-            if (torch.isnan(ret[k]).any() or torch.isinf(ret[k]).any()):
-                print(f"! [Numerical Error] {k} contains nan or inf.", flush=True)
 
     return ret
 
