@@ -487,14 +487,12 @@ def create_nerf(args):
     grad_vars += list(model_fine.parameters())
     def network_query_fn(
         inputs,
-        viewdirs=None, 
         additional_pixel_information,
         network_fn,
         detailed_output=False,
     ):
         return run_network(
             inputs,
-            viewdirs=None, 
             additional_pixel_information,
             network_fn,
             embed_fn=embed_fn,
@@ -690,7 +688,7 @@ def render_rays(
     pts = rays_o[..., None, :] + rays_d[..., None, :] * z_vals[..., :, None]  # [N_rays, N_samples, 3]
 
     # Modification: `viewdirs` is removed as an argument to the network_query_fn since we do not need a viewing direction.
-    raw = network_query_fn(pts, viewdirs, network_fn, detailed_output=detailed_output)
+    raw = network_query_fn(pts, network_fn, detailed_output=detailed_output)
     
     # We maintain the original outputs computation, assuming raw2outputs function does not rely on the viewpoint-based model
     rgb_map, disp_map, acc_map, _, _, _ = raw2outputs(raw, z_vals, rays_d, raw_noise_std, white_bkgd)
