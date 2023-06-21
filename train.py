@@ -466,16 +466,13 @@ def create_nerf(args):
     grad_vars += list(model_fine.parameters())
     def network_query_fn(
         inputs,
-        additional_pixel_information,
         network_fn,
         detailed_output=False,
     ):
         return run_network(
             inputs,
-            additional_pixel_information,
             network_fn,
             embed_fn=embed_fn,
-            embeddirs_fn=embeddirs_fn,
             netchunk=args.netchunk,
             detailed_output=detailed_output,
         )
@@ -620,36 +617,6 @@ def render_rays(
     pytest=False,
     **dummy_kwargs,
 ):
-    """Volumetric rendering.
-    Args:
-      ray_batch: array of shape [batch_size, ...]. All information necessary
-        for sampling along a ray, including: ray origin, ray direction, min
-        dist, max dist, and unit-magnitude viewing direction.
-      network_fn: function. Model for predicting RGB and density at each point
-        in space.
-      network_query_fn: function used for passing queries to network_fn.
-      N_samples: int. Number of different times to sample along each ray.
-      retraw: bool. If True, include model's raw, unprocessed predictions.
-      lindisp: bool. If True, sample linearly in inverse depth rather than in depth.
-      perturb: float, 0 or 1. If non-zero, each ray is sampled at stratified
-        random points in time.
-      N_importance: int. Number of additional times to sample along each ray.
-        These samples are only passed to network_fine.
-      network_fine: "fine" network with same spec as network_fn.
-      white_bkgd: bool. If True, assume a white background.
-      raw_noise_std: ...
-      verbose: bool. If True, print more debugging info.
-    Returns:
-      rgb_map: [num_rays, 3]. Estimated RGB color of a ray. Comes from fine model.
-      disp_map: [num_rays]. Disparity map. 1 / depth.
-      acc_map: [num_rays]. Accumulated opacity along each ray. Comes from fine model.
-      raw: [num_rays, num_samples, 4]. Raw predictions from model.
-      rgb0: See rgb_map. Output for coarse model.
-      disp0: See disp_map. Output for coarse model.
-      acc0: See acc_map. Output for coarse model.
-      z_std: [num_rays]. Standard deviation of distances along ray for each
-        sample.
-    """
     
     # Modification: Extracting only ray origins and directions, we do not consider a viewpoint here. 
     N_rays = ray_batch.shape[0]
