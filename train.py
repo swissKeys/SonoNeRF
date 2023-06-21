@@ -32,7 +32,8 @@ def batchify(fn, chunk, detailed_output=False):
         if detailed_output:
             outputs, details_lists = zip(
                 *[
-                    fn(inputs[i : i + chunk], detailed_output=False)
+                    # TODO: track model input args remove detailed output 
+                    fn(inputs[i : i + chunk])
                     for i in range(0, inputs.shape[0], chunk)
                 ]
             )
@@ -44,7 +45,7 @@ def batchify(fn, chunk, detailed_output=False):
         else:
             return torch.cat(
                 [
-                    fn(inputs[i : i + chunk], detailed_output=False)
+                    fn(inputs[i : i + chunk])
                     for i in range(0, inputs.shape[0], chunk)
                 ],
                 0,

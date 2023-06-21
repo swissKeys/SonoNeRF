@@ -230,11 +230,13 @@ class NeRF(nn.Module):
         # Regardless of whether use_viewdirs is True, we only need one output_linear
         self.output_linear = nn.Linear(W, output_ch)
 
+    
+
     def forward(self, x):
         # Split the input into its components
-        input_pts, = torch.split(
+        input_pts, _ = torch.split(
             x,
-            [self.input_ch],
+            [self.input_ch, x.shape[-1] - self.input_ch],
             dim=-1,
         )
 
