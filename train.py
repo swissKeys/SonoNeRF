@@ -29,20 +29,6 @@ def batchify(fn, chunk, detailed_output=False):
         return fn
 
     def ret(inputs):
-        if detailed_output:
-            outputs, details_lists = zip(
-                *[
-                    # TODO: track model input args remove detailed output 
-                    fn(inputs[i : i + chunk])
-                    for i in range(0, inputs.shape[0], chunk)
-                ]
-            )
-            outputs = torch.cat(outputs, 0)
-            details = {}
-            for key in details_lists[0].keys():
-                details[key] = torch.cat([details[key] for details in details_lists], 0)
-            return outputs, details
-        else:
             return torch.cat(
                 [
                     fn(inputs[i : i + chunk])
@@ -63,7 +49,7 @@ def run_network(
 ):
     """Prepares inputs and applies network 'fn'."""
     print("inputs shape", inputs.shape)
-    print("inputs shape", inputs[0].shape)
+    print("input shape", inputs[0].shape)
     inputs_flat = torch.reshape(
         inputs, [-1, inputs.shape[-1]]
     )  # N_rays * N_samples_per_ray x 3
@@ -72,17 +58,10 @@ def run_network(
     outputs_flat = batchify(fn, netchunk, detailed_output)(
         embedded
     )  # fn is model or model_fine from create_nerf(). this calls Nerf.forward(embedded)
-    if detailed_output:
-        outputs_flat, details = outputs_flat
-        for key in details.keys():
-            details[key] = torch.reshape(details[key], list(inputs.shape[:-1]) + [-1])
     outputs = torch.reshape(
         outputs_flat, list(inputs.shape[:-1]) + [outputs_flat.shape[-1]]
     )
-    if detailed_output:
-        return outputs, details
-    else:
-        return outputs
+    return outputs
 
 
 def batchify_rays(

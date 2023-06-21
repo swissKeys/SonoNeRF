@@ -483,8 +483,6 @@ class ray_bending(nn.Module):
 def get_ultrasound_rays(c2w, intrin):
     H = intrin["height"]
     W = intrin["width"]
-    print(H)
-    print(W)
     device = c2w.get_device()
     i, j = torch.meshgrid(torch.linspace(0, W-1, W, device=device), torch.linspace(0, H-1, H, device=device))  
     i = i.t()
@@ -822,8 +820,6 @@ def determine_nerf_volume_extent(
     critical_rays_o = []
     critical_rays_d = []
     for c2w, intrin in zip(poses, intrinsics): 
-        print(c2w.shape)
-        print(c2w)
         this_c2w = c2w[:3, :4]
         rays_o, rays_d = get_ultrasound_rays(this_c2w, intrin)
         camera_corners_o = torch.stack(
