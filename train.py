@@ -487,13 +487,14 @@ def create_nerf(args):
     grad_vars += list(model_fine.parameters())
     def network_query_fn(
         inputs,
+        viewdirs=None, 
         additional_pixel_information,
         network_fn,
-        viewdirs=None,  # Set viewdirs to None as a default argument
         detailed_output=False,
     ):
         return run_network(
             inputs,
+            viewdirs=None, 
             additional_pixel_information,
             network_fn,
             embed_fn=embed_fn,
@@ -681,7 +682,7 @@ def render_rays(
     bounds = torch.reshape(ray_batch[..., 6:8], [-1, 1, 2])
     near, far = bounds[..., 0], bounds[..., 1]  # [-1,1]
 
-    t_vals = torch.linspace(0.0, 1.0, steps=N_samples)
+    t_vals = torch.linspace(0.0, 1.0, steps=N_samples, device=device)
     z_vals = near * (1.0 - t_vals) + far * (t_vals)
     z_vals = z_vals.expand([N_rays, N_samples])
 
