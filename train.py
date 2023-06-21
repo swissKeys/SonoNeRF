@@ -55,39 +55,18 @@ def batchify(fn, chunk, detailed_output=False):
 
 def run_network(
     inputs,
-    viewdirs,
-    additional_pixel_information,
     fn,
     embed_fn,
-    embeddirs_fn,
     netchunk=1024 * 64,
     detailed_output=False,
 ):
     """Prepares inputs and applies network 'fn'."""
+    print("inputs shape", inputs.shape)
+    print("inputs shape", inputs[0].shape)
     inputs_flat = torch.reshape(
         inputs, [-1, inputs.shape[-1]]
     )  # N_rays * N_samples_per_ray x 3
     embedded = embed_fn(inputs_flat)
-
-    # We no longer use view directions, so this part can be skipped
-    # if viewdirs is not None:
-    #     input_dirs = viewdirs[:, None].expand(inputs.shape)
-    #     input_dirs_flat = torch.reshape(input_dirs, [-1, input_dirs.shape[-1]])
-    #     embedded_dirs = embeddirs_fn(input_dirs_flat)
-    #     embedded = torch.cat([embedded, embedded_dirs], -1)
-
-    ray_bending_latents = additional_pixel_information[
-        "ray_bending_latents"
-    ]  # N_rays x latent_size
-    ray_bending_latents = ray_bending_latents[:, None].expand(
-        (inputs.shape[0], inputs.shape[1], ray_bending_latents.shape[-1])
-    )  # N_rays x N_samples_per_ray x latent_size
-    ray_bending_latents = torch.reshape(
-        ray_bending_latents, [-1, ray_bending_latents.shape[-1]]
-    )  # N_rays * N_samples_per_ray x latent_size
-    embedded = torch.cat(
-        [embedded, ray_bending_latents], -1
-    )  # N_rays * N_samples_per_ray x (embedded position + latent code)
 
     outputs_flat = batchify(fn, netchunk, detailed_output)(
         embedded
