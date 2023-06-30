@@ -120,6 +120,7 @@ class training_wrapper_class(torch.nn.Module):
             detailed_output = True
         else:
             detailed_output = False
+        
 
         rgb, disp, acc, extras = render(
             rays_o,
@@ -230,8 +231,6 @@ def render(
         far * torch.ones_like(rays_d[..., :1], device=device),
     )
     rays = torch.cat([rays_o, rays_d, near, far], -1)
-    if use_viewdirs:
-        rays = torch.cat([rays, viewdirs], -1)
 
     # Render and reshape TODO find ERROR
 
@@ -1221,10 +1220,6 @@ def main_function(args):
         time0 = time.time()
 
         optimizer.zero_grad()
-
-        # reset autodecoder gradients to avoid wrong DeepSDF-style optimization. Note: this is only guaranteed to work if the optimizer is Adam
-        for latent in ray_bending_latents_list:
-            latent.grad = None
 
         # Sample random ray batch
         # Random over all images
