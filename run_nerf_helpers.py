@@ -857,7 +857,7 @@ def determine_nerf_volume_extent(
             additional_pixel_information=additional_pixel_information,
             **render_kwargs
         )
-
+    print(details_and_rest) #TODO: fix empty dict
     critical_ray_points = details_and_rest["initial_input_pts"].reshape(-1, 3)  # N x 3
     camera_positions = poses[:, :3, 3]  # N x 3
 

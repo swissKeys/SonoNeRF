@@ -232,8 +232,6 @@ def render(
     )
     rays = torch.cat([rays_o, rays_d, near, far], -1)
 
-    # Render and reshape TODO find ERROR
-
     all_ret = batchify_rays(
         rays,
         additional_pixel_information,
@@ -247,7 +245,7 @@ def render(
 
     k_extract = ["rgb_map", "disp_map", "acc_map"]
     ret_list = [all_ret[k] for k in k_extract]
-    ret_dict = {k: all_ret[k] for k in all_ret if k not in k_extract}
+    ret_dict = {k: all_ret[k] for k in all_ret if k not in k_extract} #TODO: this is empty figure out why
     return ret_list + [ret_dict]
 
 
